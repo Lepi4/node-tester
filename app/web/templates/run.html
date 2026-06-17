@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+{% block title %}Quick Test — Node Tester{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px">
+  <div class="page-title">Quick Test</div>
+  <span style="font-size:13px;color:var(--m)">{{ cfg.proxy_group }}</span>
+</div>
+<div class="page-sub" id="status-line">Connecting to Mihomo…</div>
+
+{# Progress bar #}
+<div class="card" style="padding:16px 20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <span id="progress-label" style="font-size:13px;color:var(--m)">Preparing…</span>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="progress-count" style="font-size:13px;font-weight:600;color:var(--t)"></span>
+      <button id="stop-btn" class="btn btn-ghost" style="display:none;padding:5px 12px;font-size:12px;border-color:#fca5a5;color:#dc2626">⬛ Stop</button>
+    </div>
+  </div>
+  <div style="background:var(--bg);border-radius:99px;height:6px;overflow:hidden">
+    <div id="progress-bar" style="height:100%;width:0%;background:var(--p);border-radius:99px;transition:width .3s"></div>
+  </div>
+</div>
+
+{# Skipped nodes notice #}
+<div id="skipped-mihomo" class="hidden alert alert-warn" style="margin-bottom:10px"></div>
+<div id="skipped-ping"   class="hidden alert alert-info" style="margin-bottom:16px"></div>
+
+{# Live results table #}
+<div class="card" id="results-card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 20px;border-bottom:1px solid var(--b);display:flex;gap:0">
+    <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Results</span>
+    <span id="result-count" style="font-size:11px;color:var(--m);margin-left:8px"></span>
+  </div>
+  <table id="results-table" style="width:100%;border-collapse:collapse">
+    <thead>
+      <tr style="background:var(--bg)">
+        <th style="width:44px"></th>
+        <th style="text-align:left;padding:8px 16px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Node</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Score</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Latency</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Jitter</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Loss</th>
+        <th style="text-align:left;padding:8px 16px 8px 8px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Issues</th>
+      </tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+  <div id="empty-state" style="padding:32px;text-align:center;color:var(--m);font-size:13px">
+    <span class="spin spin-dark" style="margin:0 auto 8px;display:block;width:20px;height:20px;border-width:2px"></span>
+    Waiting for results…
+  </div>
+</div>
+
+{# Activity log #}
+<div class="card" id="log-card" style="padding:0;overflow:hidden">
+  <div style="padding:10px 16px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Activity</span>
+    <span id="log-current" style="font-size:11px;color:var(--m)"></span>
+  </div>
+  <div id="log-body" style="height:200px;overflow-y:auto;padding:6px 12px;font-family:ui-monospace,monospace;font-size:11px;line-height:1.7;color:var(--t)"></div>
+</div>
+
+{# Failed nodes #}
+<div id="failed-section" class="hidden">
+  <div style="display:flex;align-items:center;gap:8px;margin:20px 0 10px">
+    <div style="flex:1;height:1px;background:var(--b)"></div>
+    <span style="font-size:11px;font-weight:700;color:var(--err);text-transform:uppercase;letter-spacing:.5px">Failed — excluded from rating</span>
+    <div style="flex:1;height:1px;background:var(--b)"></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table style="width:100%;border-collapse:collapse">
+      <tbody id="failed-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .gr-S { background:#f5f3ff; color:#6d28d9; }
+  .gr-A { background:#f0fdf4; color:#15803d; }
+  .gr-B { background:#eff6ff; color:#1d4ed8; }
+  .gr-C { background:#fefce8; color:#a16207; }
+  .gr-D { background:#fff7ed; color:#c2410c; }
+  .gr-F { background:#fef2f2; color:#dc2626; }
+  .grade-pill {
+    display:inline-flex;align-items:center;justify-content:center;
+    width:28px;height:28px;border-radius:6px;font-size:12px;font-weight:700;
+  }
+  #results-table tbody tr { border-top:1px solid var(--b); transition:background .1s; }
+  #results-table tbody tr:hover { background:var(--bg); }
+  #results-table td { padding:10px 12px;font-size:13px; }
+  #results-table td:first-child { padding:10px 8px 10px 16px; }
+  #results-table td:last-child { padding-right:20px; }
+  .score-bar-wrap { width:60px;height:4px;background:var(--bg);border-radius:99px;display:inline-block;vertical-align:middle;margin-left:6px; }
+  .score-bar { height:100%;border-radius:99px; }
+  .mono { font-family:ui-monospace,monospace;font-size:12px; }
+  .fail-row td { padding:10px 16px;font-size:13px;border-top:1px solid var(--b); }
+</style>
+
+<script>
+(function() {
+  const body     = document.getElementById('results-body');
+  const failBody = document.getElementById('failed-body');
+  const bar      = document.getElementById('progress-bar');
+  const label    = document.getElementById('progress-label');
+  const count    = document.getElementById('progress-count');
+  const rcnt     = document.getElementById('result-count');
+  const empty         = document.getElementById('empty-state');
+  const status        = document.getElementById('status-line');
+  const failSec       = document.getElementById('failed-section');
+  const skippedMihomo = document.getElementById('skipped-mihomo');
+  const skippedPing   = document.getElementById('skipped-ping');
+  const logBody       = document.getElementById('log-body');
+  const logCurrent    = document.getElementById('log-current');
+
+  // Log panel helpers
+  let stabLineId = null;
+
+  function logLine(html, color) {
+    const el = document.createElement('div');
+    el.innerHTML = `<span style="color:${color || 'inherit'}">${html}</span>`;
+    logBody.appendChild(el);
+    if (logBody.children.length > 600) logBody.removeChild(logBody.firstChild);
+    logBody.scrollTop = logBody.scrollHeight;
+    return el;
+  }
+
+  function updateOrCreateStabLine(html) {
+    if (stabLineId) {
+      const el = document.getElementById(stabLineId);
+      if (el) { el.innerHTML = html; logBody.scrollTop = logBody.scrollHeight; return; }
+    }
+    const el = logLine(html, 'var(--m)');
+    stabLineId = 'stab-' + Date.now();
+    el.id = stabLineId;
+  }
+
+  const stopBtn = document.getElementById('stop-btn');
+  let stopped = false;
+  let src;
+
+  function doStop() {
+    if (stopped) return;
+    stopped = true;
+    fetch('/api/stop/quick', {method: 'POST'}).catch(() => {});
+    if (src) src.close();
+    stopBtn.style.display = 'none';
+    label.textContent = 'Stopped';
+    status.textContent = `Stopped — ${results.length} node${results.length !== 1 ? 's' : ''} completed`;
+    bar.style.background = '#9ca3af';
+  }
+
+  stopBtn.addEventListener('click', doStop);
+
+  let results = [];
+  let total = 0;
+
+  const GRADE_ORDER = {S:0,A:1,B:2,C:3,D:4,F:5};
+
+  function barColor(score) {
+    if (score >= 90) return '#7c3aed';
+    if (score >= 75) return '#16a34a';
+    if (score >= 60) return '#2563eb';
+    if (score >= 45) return '#ca8a04';
+    if (score >= 30) return '#ea580c';
+    return '#dc2626';
+  }
+
+  function fmt(val, unit, na) {
+    return val != null ? `<span class="mono">${val}${unit}</span>` : `<span style="color:var(--m)">${na}</span>`;
+  }
+
+  const expandState = {};
+
+  function safeId(name) {
+    return 'det-' + name.replace(/[^a-z0-9]/gi, '_');
+  }
+
+  function renderResults() {
+    const sorted = [...results].sort((a,b) => b.total_score - a.total_score);
+    body.innerHTML = '';
+    sorted.forEach((r) => {
+      const id = safeId(r.name);
+
+      // Main row
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      tr.title = 'Click to expand per-service breakdown';
+      tr.onclick = () => toggleDetail(id);
+      const failed = (r.url_results || []).filter(u => u.ms == null).map(u => u.name);
+      const issuesHtml = failed.length
+        ? failed.map(n => `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:#fef2f2;color:#dc2626;white-space:nowrap">${n}</span>`).join(' ')
+        : '<span style="color:var(--b2,#d1d5db)">—</span>';
+
+      tr.innerHTML = `
+        <td><span class="grade-pill gr-${r.grade}">${r.grade}</span></td>
+        <td style="font-weight:500">${r.name}</td>
+        <td style="text-align:right">
+          <span style="font-weight:700;color:var(--t)">${r.total_score}</span>
+          <span class="score-bar-wrap"><span class="score-bar" style="width:${r.total_score}%;background:${barColor(r.total_score)}"></span></span>
+        </td>
+        <td style="text-align:right">${fmt(r.avg_ms,'ms','—')}</td>
+        <td style="text-align:right">${r.jitter_ms != null ? fmt(r.jitter_ms,'ms','') : '<span style="color:var(--m)">—</span>'}</td>
+        <td style="text-align:right;padding-right:8px">${fmt(r.loss_pct,'%','')}</td>
+        <td style="padding-left:8px">${issuesHtml}</td>`;
+      body.appendChild(tr);
+
+      // Detail row — per-URL breakdown
+      const det = document.createElement('tr');
+      det.id = id;
+      det.style.display = expandState[id] ? 'table-row' : 'none';
+      const chips = (r.url_results || []).map(u => {
+        const ok  = u.ms != null;
+        const bg  = ok ? '#f0fdf4' : '#fef2f2';
+        const col = ok ? '#15803d' : '#dc2626';
+        const pct = ok ? Math.round(u.raw_score / 10 * 100) : 0;
+        const pts = ok ? `+${u.score}/${u.max_pts}` : `0/${u.max_pts}`;
+        return `<span style="font-size:11px;padding:3px 8px 3px 6px;border-radius:4px;background:${bg};color:${col};white-space:nowrap" title="${pts}pts">
+          ${ok ? '✓' : '✗'} ${u.name}: ${ok ? u.ms+'ms' : '—'}
+        </span>`;
+      }).join('');
+      det.innerHTML = `<td colspan="7" style="background:var(--bg);padding:6px 16px 10px">
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+      </td>`;
+      body.appendChild(det);
+    });
+    if (sorted.length > 0) empty.style.display = 'none';
+    rcnt.textContent = `${sorted.length} node${sorted.length !== 1 ? 's' : ''}`;
+  }
+
+  function toggleDetail(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const open = el.style.display !== 'none';
+    el.style.display = open ? 'none' : 'table-row';
+    expandState[id] = !open;
+  }
+
+  function addFailed(r) {
+    failSec.classList.remove('hidden');
+    const tr = document.createElement('tr');
+    tr.className = 'fail-row';
+    tr.innerHTML = `
+      <td style="font-weight:500;color:var(--err)">${r.name}</td>
+      <td style="color:var(--m)">${r.fail_reason || 'unknown'}</td>`;
+    failBody.appendChild(tr);
+  }
+
+  src = new EventSource('/api/run/quick');
+
+  src.onmessage = function(e) {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'start') {
+      total = msg.total;
+      status.textContent = `Testing ${total} active node${total !== 1 ? 's' : ''}…`;
+      label.textContent = 'Running…';
+      count.textContent = `0 / ${total}`;
+      stopBtn.style.display = '';
+
+      if (msg.skipped && msg.skipped.length > 0) {
+        const dead  = msg.skipped.filter(n => n.source === 'mihomo');
+        const noResp = msg.skipped.filter(n => n.source === 'ping');
+
+        if (dead.length > 0) {
+          skippedMihomo.classList.remove('hidden');
+          const names = dead.map(n => n.name).join(', ');
+          skippedMihomo.innerHTML = `<strong>${dead.length} dead (Mihomo URLTest):</strong> ${names}`;
+        }
+        if (noResp.length > 0) {
+          skippedPing.classList.remove('hidden');
+          const names = noResp.map(n =>
+            `<span title="${n.reason}" style="cursor:help;text-decoration:underline dotted">${n.name}</span>`
+          ).join(', ');
+          skippedPing.innerHTML = `<strong>${noResp.length} unreachable (ping):</strong> ${names} — hover for reason`;
+        }
+      }
+    }
+
+    else if (msg.type === 'node') {
+      const pct = Math.round(msg.progress / msg.total * 100);
+      bar.style.width = pct + '%';
+      count.textContent = `${msg.progress} / ${msg.total}`;
+
+      const r = msg.data;
+      // Log summary line
+      stabLineId = null;
+      if (r.block_failed) {
+        logLine(`&nbsp;&nbsp;✗ failed — ${r.fail_reason || 'unreachable'}`, '#dc2626');
+        addFailed(r);
+      } else {
+        const col = barColor(r.total_score);
+        logLine(`&nbsp;&nbsp;✓ <strong style="color:${col}">${r.grade} ${r.total_score}pts</strong> · jitter ${r.jitter_ms != null ? r.jitter_ms+'ms' : '—'}, loss ${r.loss_pct}%`, col);
+        results.push(r);
+        renderResults();
+      }
+    }
+
+    else if (msg.type === 'step') {
+      const n = msg.node;
+      if (msg.phase === 'url_start') {
+        stabLineId = null;
+        logCurrent.textContent = n;
+        logLine(`▶ <strong>${n}</strong>`, 'var(--t)');
+      }
+      else if (msg.phase === 'url') {
+        const ok   = msg.ms != null;
+        const col  = ok ? '#15803d' : '#dc2626';
+        const main = ok ? `${msg.ms}ms` : 'failed';
+
+        // Show both raw attempts if they differ or if retries happened
+        let detail = '';
+        if (msg.attempts === 2) {
+          const a1 = msg.ms1 != null ? msg.ms1+'ms' : '—';
+          const a2 = msg.ms2 != null ? msg.ms2+'ms' : '—';
+          if (msg.ms1 !== msg.ms2) detail = ` <span style="color:var(--m);font-size:10px">(${a1} / ${a2})</span>`;
+        } else if (msg.attempts === 3) {
+          detail = ` <span style="color:#ca8a04;font-size:10px">↺↺↺</span>`;
+        }
+
+        logLine(`&nbsp;&nbsp;${msg.service.padEnd(11,' ')} <span style="color:${col}">${main}</span>${detail}`, 'var(--m)');
+      }
+      else if (msg.phase === 'stability_start') {
+        stabLineId = null;
+        logLine(`&nbsp;&nbsp;stability → ${msg.url_name} (${msg.base_ms}ms baseline)`, 'var(--m)');
+      }
+      else if (msg.phase === 'stability_progress') {
+        const ok  = msg.ms != null;
+        const col = ok ? 'var(--m)' : '#dc2626';
+        const bar = '█'.repeat(Math.round(msg.done / msg.total * 12)) + '░'.repeat(12 - Math.round(msg.done / msg.total * 12));
+        const ms  = ok ? `${msg.ms}ms` : 'timeout';
+        updateOrCreateStabLine(`&nbsp;&nbsp;<span style="color:var(--m)">${bar} ${msg.done}/${msg.total}</span> <span style="color:${col}">${ms}</span>`);
+      }
+    }
+
+    else if (msg.type === 'done') {
+      src.close();
+      stopBtn.style.display = 'none';
+      bar.style.width = '100%';
+      label.textContent = 'Done';
+      count.textContent = total > 0 ? `${total} / ${total}` : '';
+      status.textContent = `Completed — ${results.length} node${results.length !== 1 ? 's' : ''} rated`;
+    }
+
+    else if (msg.type === 'error') {
+      src.close();
+      stopBtn.style.display = 'none';
+      status.textContent = '❌ ' + msg.message;
+      label.textContent = 'Error';
+    }
+  };
+
+  src.onerror = function() {
+    if (src.readyState === EventSource.CLOSED) return;
+    status.textContent = 'Connection lost — reload to retry';
+    src.close();
+  };
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Video Test — Node Tester{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px">
+  <div class="page-title">Video Test</div>
+  <span style="font-size:13px;color:var(--m)">{{ cfg.proxy_group }} · DASH-IF (BBB)</span>
+</div>
+<div class="page-sub" id="status-line">Connecting…</div>
+
+<div class="card" style="padding:16px 20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <span id="progress-label" style="font-size:13px;color:var(--m)">Preparing…</span>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="progress-count" style="font-size:13px;font-weight:600;color:var(--t)"></span>
+      <button id="stop-btn" class="btn btn-ghost" style="display:none;padding:5px 12px;font-size:12px;border-color:#fca5a5;color:#dc2626">⬛ Stop</button>
+    </div>
+  </div>
+  <div style="background:var(--bg);border-radius:99px;height:6px;overflow:hidden">
+    <div id="progress-bar" style="height:100%;width:0%;background:var(--p);border-radius:99px;transition:width .3s"></div>
+  </div>
+</div>
+
+<div id="skipped-mihomo" class="hidden alert alert-warn" style="margin-bottom:10px"></div>
+<div id="skipped-ping"   class="hidden alert alert-info" style="margin-bottom:16px"></div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 20px;border-bottom:1px solid var(--b);display:flex;gap:0">
+    <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Results</span>
+    <span id="result-count" style="font-size:11px;color:var(--m);margin-left:8px"></span>
+  </div>
+  <div style="overflow-x:auto">
+  <table id="results-table" style="width:100%;border-collapse:collapse;min-width:480px">
+    <thead>
+      <tr style="background:var(--bg)">
+        <th style="width:44px"></th>
+        <th style="text-align:left;padding:8px 16px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Node</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px" title="Score 0-10">Score</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px" title="DASH-IF: did video buffer?">DASH-IF</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px" title="Seconds of video buffered">Buffered</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px" title="Telegram video downloads ok/total">TG Video</th>
+        <th style="text-align:right;padding:8px 16px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px" title="Time to first buffer (ms)">TTB</th>
+      </tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+  </div>
+  <div id="empty-state" style="padding:32px;text-align:center;color:var(--m);font-size:13px">
+    <span class="spin spin-dark" style="margin:0 auto 8px;display:block;width:20px;height:20px;border-width:2px"></span>
+    Waiting for results…
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:10px 16px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Activity</span>
+    <span id="log-current" style="font-size:11px;color:var(--m)"></span>
+  </div>
+  <div id="log-body" style="height:220px;overflow-y:auto;padding:6px 12px;font-family:ui-monospace,monospace;font-size:11px;line-height:1.7;color:var(--t)"></div>
+</div>
+
+<style>
+  .gr-S { background:#f5f3ff;color:#6d28d9; }
+  .gr-A { background:#f0fdf4;color:#15803d; }
+  .gr-B { background:#eff6ff;color:#1d4ed8; }
+  .gr-C { background:#fefce8;color:#a16207; }
+  .gr-D { background:#fff7ed;color:#c2410c; }
+  .gr-F { background:#fef2f2;color:#dc2626; }
+  .grade-pill { display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;font-size:12px;font-weight:700; }
+  #results-table tbody tr { border-top:1px solid var(--b); }
+  #results-table tbody tr:hover { background:var(--bg); }
+  #results-table td { padding:9px 12px;font-size:12px; }
+  #results-table td:first-child { padding:9px 8px 9px 16px; }
+  #results-table td:last-child  { padding-right:16px; }
+  .mono { font-family:ui-monospace,monospace;font-size:11px; }
+</style>
+
+<script>
+(function () {
+  const bar      = document.getElementById('progress-bar');
+  const label    = document.getElementById('progress-label');
+  const count    = document.getElementById('progress-count');
+  const rcnt     = document.getElementById('result-count');
+  const status   = document.getElementById('status-line');
+  const empty    = document.getElementById('empty-state');
+  const tbody    = document.getElementById('results-body');
+  const logBody  = document.getElementById('log-body');
+  const logCur   = document.getElementById('log-current');
+  const stopBtn  = document.getElementById('stop-btn');
+  const skMihomo = document.getElementById('skipped-mihomo');
+  const skPing   = document.getElementById('skipped-ping');
+
+  let results = [], total = 0, stopped = false, src;
+
+  function doStop() {
+    if (stopped) return;
+    stopped = true;
+    fetch('/api/stop/video', {method: 'POST'}).catch(() => {});
+    if (src) src.close();
+    stopBtn.style.display = 'none';
+    label.textContent  = 'Stopped';
+    status.textContent = `Stopped — ${results.length} completed`;
+    bar.style.background = '#9ca3af';
+  }
+  stopBtn.addEventListener('click', doStop);
+
+  function log(html, color) {
+    const el = document.createElement('div');
+    el.innerHTML = `<span style="color:${color || 'inherit'}">${html}</span>`;
+    logBody.appendChild(el);
+    if (logBody.children.length > 600) logBody.removeChild(logBody.firstChild);
+    logBody.scrollTop = logBody.scrollHeight;
+  }
+
+  function ttbColor(ms) {
+    if (ms == null) return '#d1d5db';
+    if (ms < 5000)  return '#7c3aed';
+    if (ms < 10000) return '#16a34a';
+    if (ms < 20000) return '#2563eb';
+    return '#ca8a04';
+  }
+
+  function fmtMs(ms, colorFn) {
+    if (ms == null) return `<span style="color:var(--m)">—</span>`;
+    const c = colorFn ? colorFn(ms) : '#6b7280';
+    return `<span class="mono" style="color:${c}">${ms} ms</span>`;
+  }
+
+  function fmtSite(site) {
+    if (!site) return `<span style="color:var(--m)">—</span>`;
+    const buf  = site.video_buffered;
+    const icon = buf ? '▶' : site.ok ? '⚠' : '✗';
+    const col  = buf ? '#16a34a' : site.ok ? '#ca8a04' : '#dc2626';
+    return `<span style="color:${col};font-weight:600">${icon}</span>`;
+  }
+
+  function renderResults() {
+    const sorted = [...results].sort((a, b) => (b.score || 0) - (a.score || 0));
+    tbody.innerHTML = '';
+    sorted.forEach(r => {
+      const sites  = r.samples?.[0]?.sites || [];
+      const dashif = sites.find(s => s.name === 'DASH-IF');
+      const buf    = dashif?.buffered_secs ?? 0;
+      const bufStr = buf > 0 ? `<span class="mono" style="color:#16a34a">${buf}s</span>`
+                              : `<span style="color:var(--m)">—</span>`;
+
+      const sc    = r.score ?? 0;
+      const scCol = sc >= 7 ? '#16a34a' : sc >= 5 ? '#2563eb' : sc >= 3 ? '#ca8a04' : '#dc2626';
+
+      const tr = document.createElement('tr');
+      const tgOk  = r.tg_ok  ?? 0;
+      const tgTot = r.tg_total ?? 0;
+      let tgStr;
+      if (tgTot === 0) {
+        tgStr = `<span style="color:var(--m)">—</span>`;
+      } else {
+        const tgCol = tgOk === tgTot ? '#16a34a' : tgOk > 0 ? '#ca8a04' : '#dc2626';
+        const ttbStr = r.tg_ttb_avg != null ? ` <span style="color:var(--m);font-size:10px">${r.tg_ttb_avg}ms</span>` : '';
+        tgStr = `<span style="color:${tgCol}">${tgOk}/${tgTot}</span>${ttbStr}`;
+      }
+
+      tr.innerHTML = `
+        <td><span class="grade-pill gr-${r.grade}">${r.grade}</span></td>
+        <td style="font-weight:500">${r.name}</td>
+        <td style="text-align:right"><span class="mono" style="color:${scCol};font-weight:700">${sc}/10</span></td>
+        <td style="text-align:right">${fmtSite(dashif)}</td>
+        <td style="text-align:right">${bufStr}</td>
+        <td style="text-align:right">${tgStr}</td>
+        <td style="text-align:right">${fmtMs(r.ttb_avg, ttbColor)}</td>`;
+      tbody.appendChild(tr);
+    });
+    if (sorted.length) empty.style.display = 'none';
+    rcnt.textContent = `${sorted.length} node${sorted.length !== 1 ? 's' : ''}`;
+  }
+
+  src = new EventSource('/api/run/video');
+
+  src.onmessage = function (e) {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'start') {
+      total = msg.total;
+      status.textContent = `Testing ${total} nodes…`;
+      label.textContent  = 'Running…';
+      count.textContent  = `0 / ${total}`;
+      stopBtn.style.display = '';
+      const dead   = (msg.skipped || []).filter(n => n.source === 'mihomo');
+      const noResp = (msg.skipped || []).filter(n => n.source === 'ping');
+      if (dead.length)   { skMihomo.classList.remove('hidden'); skMihomo.innerHTML = `<strong>${dead.length} dead:</strong> ${dead.map(n=>n.name).join(', ')}`; }
+      if (noResp.length) { skPing.classList.remove('hidden');   skPing.innerHTML   = `<strong>${noResp.length} unreachable:</strong> ${noResp.map(n=>n.name).join(', ')}`; }
+    }
+
+    else if (msg.type === 'step') {
+      const p = msg.phase;
+      if (p === 'video_start') {
+        const run = msg.run || 1;
+        logCur.textContent = msg.node + (run > 1 ? ` (run ${run})` : '');
+        if (run === 1) log(`▶ <strong>${msg.node}</strong>`, 'var(--t)');
+        else log(`&nbsp;&nbsp;↺ <span style="color:var(--m)">Run ${run}</span>`, 'var(--m)');
+      }
+      else if (p === 'video_site_done') {
+        const buf  = msg.video_buffered;
+        const col  = buf ? '#16a34a' : msg.ok ? '#ca8a04' : '#dc2626';
+        const icon = buf ? '▶' : msg.ok ? '⚠' : '✗';
+        const ttb  = msg.ttb_ms  != null ? ` TTB ${msg.ttb_ms}ms` : '';
+        const secs = msg.buffered_secs > 0 ? ` · ${msg.buffered_secs}s buffered` : '';
+        log(`&nbsp;&nbsp;<span style="color:${col}">${icon} ${msg.site}${ttb}${secs}</span>`, col);
+      }
+      else if (p === 'video_site_err') {
+        log(`&nbsp;&nbsp;✗ ${msg.site}: <span style="color:#dc2626">${msg.error}</span>`, '#dc2626');
+      }
+      else if (p === 'video_diag') {
+        const d = msg.diag || {};
+        const vs = d.video_state || {};
+        const info = `rs=${vs.readyState ?? '?'} buf=${vs.buffered_len ?? '?'} src=${(vs.src||'').slice(0,40)||'—'} err=${vs.error??'—'} local=${d.dashjs_local}`;
+        log(`&nbsp;&nbsp;<span style="color:#6b7280;font-size:0.8em">diag: ${info}</span>`, '#6b7280');
+        (d.console || []).forEach(c => log(`&nbsp;&nbsp;<span style="color:#6b7280;font-size:0.8em">${c}</span>`, '#6b7280'));
+      }
+      else if (p === 'tg_video_done') {
+        const col = msg.ok ? '#60a5fa' : '#6b7280';
+        const icon = msg.ok ? '▶' : '✗';
+        const ttb = msg.ttb_ms != null ? ` TTB ${msg.ttb_ms}ms` : '';
+        const spd = msg.speed_mbps != null ? ` · ${msg.speed_mbps} Mbps` : '';
+        const mb  = msg.downloaded_mb != null && msg.downloaded_mb > 0 ? ` · ${msg.downloaded_mb}MB` : '';
+        const err = msg.error ? ` (${msg.error})` : '';
+        const shortUrl = (msg.url || '').split('/').slice(-1)[0].slice(0, 16);
+        log(`&nbsp;&nbsp;<span style="color:${col}">${icon} TG ${shortUrl}${ttb}${spd}${mb}${err}</span>`, col);
+      }
+      else if (p === 'video_run_done') {
+        const col = msg.score >= 7 ? '#16a34a' : msg.score >= 4 ? '#ca8a04' : '#dc2626';
+        const ttb = msg.ttb_avg != null ? ` · TTB ${msg.ttb_avg}ms` : '';
+        const tgStr = (msg.tg_total || 0) > 0 ? ` · TG ${msg.tg_ok}/${msg.tg_total}` : '';
+        const runLbl = msg.run > 1 ? ` [R${msg.run}]` : '';
+        log(`&nbsp;&nbsp;✓ <strong style="color:${col}">${msg.grade} ${msg.score}/10 · ${msg.videos_buffered}/${msg.total} buffered${tgStr}${ttb}${runLbl}</strong>`, col);
+      }
+    }
+
+    else if (msg.type === 'node') {
+      const r   = msg.data;
+      bar.style.width   = Math.round(msg.progress / msg.total * 100) + '%';
+      count.textContent = `${msg.progress} / ${msg.total}`;
+      results.push(r);
+      renderResults();
+    }
+
+    else if (msg.type === 'done') {
+      src.close(); stopBtn.style.display = 'none';
+      bar.style.width = '100%'; label.textContent = 'Done';
+      count.textContent = total > 0 ? `${total} / ${total}` : '';
+      status.textContent = `Completed — ${results.length} nodes tested`;
+    }
+
+    else if (msg.type === 'error') {
+      src.close(); stopBtn.style.display = 'none';
+      status.textContent = '❌ ' + msg.message; label.textContent = 'Error';
+    }
+  };
+
+  src.onerror = function () {
+    if (src.readyState === EventSource.CLOSED) return;
+    status.textContent = 'Connection lost — reload to retry'; src.close();
+  };
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Deep Test — Node Tester{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px">
+  <div class="page-title">Deep Test</div>
+  <span style="font-size:13px;color:var(--m)">{{ cfg.proxy_group }} · Quick + Speed + WS + Browser + Video + DPI</span>
+</div>
+<div class="page-sub" id="status-line">Connecting…</div>
+
+<div class="card" style="padding:16px 20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <span id="progress-label" style="font-size:13px;color:var(--m)">Preparing…</span>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="progress-count" style="font-size:13px;font-weight:600;color:var(--t)"></span>
+      <button id="stop-btn" class="btn btn-ghost" style="display:none;padding:5px 12px;font-size:12px;border-color:#fca5a5;color:#dc2626">⬛ Stop</button>
+    </div>
+  </div>
+  <div style="background:var(--bg);border-radius:99px;height:6px;overflow:hidden">
+    <div id="progress-bar" style="height:100%;width:0%;background:var(--p);border-radius:99px;transition:width .3s"></div>
+  </div>
+</div>
+
+<div id="skipped-mihomo" class="hidden alert alert-warn" style="margin-bottom:10px"></div>
+<div id="skipped-ping"   class="hidden alert alert-info" style="margin-bottom:16px"></div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 20px;border-bottom:1px solid var(--b);display:flex;gap:0">
+    <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Results</span>
+    <span id="result-count" style="font-size:11px;color:var(--m);margin-left:8px"></span>
+  </div>
+  <div style="overflow-x:auto">
+  <table id="results-table" style="width:100%;border-collapse:collapse;min-width:820px">
+    <thead>
+      <tr style="background:var(--bg)">
+        <th style="width:44px"></th>
+        <th style="text-align:left;padding:8px 16px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Node</th>
+        <th style="text-align:center;padding:8px 10px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:80px">Deep</th>
+        <th style="text-align:center;padding:8px 10px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:80px">Quick</th>
+        <th style="text-align:center;padding:8px 10px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:90px" title="Browser (httpx) 60% + Video (Playwright) 40%">Browser+Vid</th>
+        <th style="text-align:center;padding:8px 10px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:90px">Speed</th>
+        <th style="text-align:center;padding:8px 10px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:80px">WS</th>
+        <th style="text-align:center;padding:8px 10px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:80px" title="DPI bypass 0-10">DPI</th>
+      </tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+  </div>
+  <div id="empty-state" style="padding:32px;text-align:center;color:var(--m);font-size:13px">
+    <span class="spin spin-dark" style="margin:0 auto 8px;display:block;width:20px;height:20px;border-width:2px"></span>
+    Waiting for results…
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:10px 16px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Activity</span>
+    <span id="log-current" style="font-size:11px;color:var(--m)"></span>
+  </div>
+  <div id="log-body" style="height:220px;overflow-y:auto;padding:6px 12px;font-family:ui-monospace,monospace;font-size:11px;line-height:1.7;color:var(--t)"></div>
+</div>
+
+<style>
+  .gr-S { background:#f5f3ff;color:#6d28d9; }
+  .gr-A { background:#f0fdf4;color:#15803d; }
+  .gr-B { background:#eff6ff;color:#1d4ed8; }
+  .gr-C { background:#fefce8;color:#a16207; }
+  .gr-D { background:#fff7ed;color:#c2410c; }
+  .gr-F { background:#fef2f2;color:#dc2626; }
+  .gpill-lg { display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;font-size:12px;font-weight:700; }
+  .gpill-sm { display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:4px;font-size:10px;font-weight:700;vertical-align:middle; }
+  .gval { font-size:12px;font-weight:600;margin-left:3px;vertical-align:middle; }
+  .dash { color:var(--m);font-size:12px; }
+  #results-table tbody tr { border-top:1px solid var(--b); }
+  #results-table tbody tr:hover { background:var(--bg); }
+  #results-table td { padding:9px 10px;font-size:13px; }
+  #results-table td:first-child { padding:9px 8px 9px 16px; }
+  #results-table td:last-child  { padding-right:14px; }
+  .mono { font-family:ui-monospace,monospace;font-size:11px; }
+  .spin-line { display:inline-block;width:14px;height:14px;border:2px solid var(--b);border-top-color:var(--p);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<script>
+(function () {
+  const bar      = document.getElementById('progress-bar');
+  const label    = document.getElementById('progress-label');
+  const count    = document.getElementById('progress-count');
+  const rcnt     = document.getElementById('result-count');
+  const status   = document.getElementById('status-line');
+  const empty    = document.getElementById('empty-state');
+  const tbody    = document.getElementById('results-body');
+  const logBody  = document.getElementById('log-body');
+  const logCur   = document.getElementById('log-current');
+  const stopBtn  = document.getElementById('stop-btn');
+  const skMihomo = document.getElementById('skipped-mihomo');
+  const skPing   = document.getElementById('skipped-ping');
+
+  let total   = 0;
+  let stopped = false;
+  let src;
+  let nodeData  = {};   // { nodeName: {quick, speed, ws, browser, video, dpi, deep} }
+  let nodeOrder = [];
+
+  function doStop() {
+    if (stopped) return;
+    stopped = true;
+    fetch('/api/stop/deep', {method: 'POST'}).catch(() => {});
+    if (src) src.close();
+    stopBtn.style.display = 'none';
+    label.textContent  = 'Stopped';
+    status.textContent = `Stopped — ${nodeOrder.filter(n => nodeData[n].deep).length} completed`;
+    bar.style.background = '#9ca3af';
+  }
+  stopBtn.addEventListener('click', doStop);
+
+  function log(html, color) {
+    const el = document.createElement('div');
+    el.innerHTML = `<span style="color:${color || 'inherit'}">${html}</span>`;
+    logBody.appendChild(el);
+    if (logBody.children.length > 600) logBody.removeChild(logBody.firstChild);
+    logBody.scrollTop = logBody.scrollHeight;
+  }
+
+  function grCell(grade, val) {
+    if (grade == null) return `<span class="spin-line"></span>`;
+    return `<span class="gpill-sm gr-${grade}">${grade}</span><span class="gval">${val}</span>`;
+  }
+
+  function combinedBrCell(br, vid) {
+    // Show combined Browser+Video cell
+    if (!br && !vid) return `<span class="spin-line"></span>`;
+    const parts = [];
+    if (br)  parts.push(`<span style="font-size:10px;color:var(--m)">B</span><span class="gval" style="font-size:11px">${br.score}</span>`);
+    if (vid) parts.push(`<span style="font-size:10px;color:var(--m)">V</span><span class="gval" style="font-size:11px">${vid.score}</span>`);
+    // Combined grade shown if both ready
+    if (br && vid) {
+      const combined = Math.min(10, Math.round(br.score * 0.6 + vid.score * 0.4));
+      const grades = ['F','F','F','D','C','C','B','A','A','S','S'];
+      const g = combined >= 9 ? 'S' : combined >= 7 ? 'A' : combined >= 5 ? 'B' : combined >= 3 ? 'C' : combined >= 1 ? 'D' : 'F';
+      return `<span class="gpill-sm gr-${g}">${g}</span><span class="gval">${combined}</span> <span style="font-size:10px;color:var(--m)">(${br.score}+${vid.score})</span>`;
+    }
+    return parts.join(' ');
+  }
+
+  function renderRow(name) {
+    const d  = nodeData[name];
+    let tr = document.getElementById('row-' + name.replace(/[^a-zA-Z0-9-_]/g, '_'));
+    if (!tr) {
+      tr = document.createElement('tr');
+      tr.id = 'row-' + name.replace(/[^a-zA-Z0-9-_]/g, '_');
+      tbody.appendChild(tr);
+    }
+
+    const qr = d.quick;
+    const sr = d.speed;
+    const wr = d.ws;
+    const br = d.browser;
+    const vr = d.video;
+    const dp = d.dpi;
+    const dr = d.deep;
+
+    const dpiCell = dp
+      ? `<span class="gpill-sm gr-${dp.grade}">${dp.grade}</span><span class="gval">${dp.score}</span><br><span style="font-size:10px;color:var(--m)">${dp.passed_count}/${dp.alive_count}</span>`
+      : '<span class="spin-line"></span>';
+
+    tr.innerHTML = `
+      <td>${dr ? `<span class="gpill-lg gr-${dr.grade}">${dr.grade}</span>` : '<span class="spin-line"></span>'}</td>
+      <td style="font-weight:500;font-size:13px">${name}</td>
+      <td style="text-align:center">${dr ? `<span style="font-size:13px;font-weight:700">${dr.score}</span>` : '<span class="dash">…</span>'}</td>
+      <td style="text-align:center">${qr ? grCell(qr.grade, qr.total_score ?? qr.score) : '<span class="spin-line"></span>'}</td>
+      <td style="text-align:center">${combinedBrCell(br, vr)}</td>
+      <td style="text-align:center">${sr ? grCell(sr.grade, (sr.dl_mbps ?? '?') + 'M') : '<span class="spin-line"></span>'}</td>
+      <td style="text-align:center">${wr ? grCell(wr.grade, (wr.rtt_avg ?? '?') + 'ms') : '<span class="spin-line"></span>'}</td>
+      <td style="text-align:center">${dpiCell}</td>`;
+  }
+
+  function ensureNode(name) {
+    if (!nodeData[name]) {
+      nodeData[name] = { quick: null, speed: null, ws: null, browser: null, video: null, dpi: null, deep: null };
+      nodeOrder.push(name);
+    }
+  }
+
+  src = new EventSource('/api/run/deep');
+
+  src.onmessage = function (e) {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'scanning') {
+      status.textContent = `Scanning ${msg.uncertain} uncertain node${msg.uncertain !== 1 ? 's' : ''}… (${msg.confirmed} confirmed active)`;
+      label.textContent  = 'Scanning…';
+      stopBtn.style.display = '';
+    }
+
+    else if (msg.type === 'start') {
+      total = msg.total;
+      status.textContent = `Deep testing ${total} nodes…`;
+      label.textContent  = 'Running…';
+      count.textContent  = `0 / ${total}`;
+      stopBtn.style.display = '';
+      const dead   = (msg.skipped || []).filter(n => n.source === 'mihomo');
+      const noResp = (msg.skipped || []).filter(n => n.source === 'ping');
+      if (dead.length)   { skMihomo.classList.remove('hidden'); skMihomo.innerHTML = `<strong>${dead.length} dead:</strong> ${dead.map(n=>n.name).join(', ')}`; }
+      if (noResp.length) { skPing.classList.remove('hidden');   skPing.innerHTML   = `<strong>${noResp.length} unreachable:</strong> ${noResp.map(n=>n.name).join(', ')}`; }
+    }
+
+    else if (msg.type === 'step') {
+      const p = msg.phase;
+      if (p === 'quick_start') {
+        logCur.textContent = msg.node;
+        log(`▶ <strong>${msg.node}</strong>`, 'var(--t)');
+        log(`&nbsp;&nbsp;→ Quick Test…`, 'var(--m)');
+      } else if (p === 'url') {
+        const ms = msg.ms != null ? msg.ms + ' ms' : 'timeout';
+        log(`&nbsp;&nbsp;&nbsp;&nbsp;${msg.service}: ${ms}`, 'var(--m)');
+      } else if (p === 'stability_start') {
+        log(`&nbsp;&nbsp;&nbsp;&nbsp;Stability (${msg.url_name} ${msg.base_ms} ms)…`, 'var(--m)');
+      } else if (p === 'stability_progress') {
+        log(`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${msg.done}/${msg.total} · ${msg.ms ?? '—'} ms`, 'var(--m)');
+      } else if (p === 'speed_start' || p === 'ws_start' || p === 'browser_start' || p === 'video_start' || p === 'dpi_start') {
+        const m = { speed_start:'Speed', ws_start:'WebSocket', browser_start:'Browser', video_start:'Video', dpi_start:'DPI' }[p];
+        log(`&nbsp;&nbsp;→ ${m} Test…`, 'var(--m)');
+      } else if (p === 'dpi_done') {
+        const sc = msg.score ?? '?';
+        const gr = msg.grade ?? '?';
+        log(`&nbsp;&nbsp;&nbsp;&nbsp;DPI: ${gr} ${sc}/10 · ${msg.passed_count}/${msg.alive_count} passed`, 'var(--m)');
+      } else if (p === 'ws_run_done') {
+        const val = msg.rtt_avg != null ? msg.rtt_avg + ' ms' : 'no echo';
+        log(`&nbsp;&nbsp;&nbsp;&nbsp;Run ${msg.run}: ${msg.grade} · ${val}`, 'var(--m)');
+      } else if (p === 'browser_run_done') {
+        const val = msg.ttfb_avg != null ? msg.ttfb_avg + ' ms TTFB' : 'failed';
+        log(`&nbsp;&nbsp;&nbsp;&nbsp;Run ${msg.run}: ${msg.grade} · ${val}`, 'var(--m)');
+      } else if (p === 'video_run_done') {
+        const buf = `${msg.videos_buffered}/${msg.total} buffered`;
+        log(`&nbsp;&nbsp;&nbsp;&nbsp;Run ${msg.run}: ${msg.grade} · ${buf}`, 'var(--m)');
+      } else if (p === 'speed_sample') {
+        const val = msg.mbps != null ? msg.mbps + ' Mbps' : 'failed';
+        log(`&nbsp;&nbsp;&nbsp;&nbsp;Run ${msg.attempt}: ${val}`, 'var(--m)');
+      }
+    }
+
+    else if (msg.type === 'node_module') {
+      ensureNode(msg.node);
+      nodeData[msg.node][msg.module] = msg.data;
+      if (empty.style.display !== 'none') empty.style.display = 'none';
+      renderRow(msg.node);
+
+      if (msg.module === 'quick') {
+        const d = msg.data;
+        log(`&nbsp;&nbsp;Quick: ${d.grade} ${d.total_score ?? '—'}`, 'var(--m)');
+      }
+    }
+
+    else if (msg.type === 'node') {
+      const r = msg.data;
+      ensureNode(r.name);
+      nodeData[r.name].deep = r;
+      renderRow(r.name);
+
+      const pct = Math.round(msg.progress / msg.total * 100);
+      bar.style.width   = pct + '%';
+      count.textContent = `${msg.progress} / ${msg.total}`;
+      const cb = r.combined_browser_score ?? '?';
+      log(`&nbsp;&nbsp;✓ Deep: <strong class="gr-${r.grade}" style="padding:1px 5px;border-radius:4px">${r.grade} ${r.score}</strong> · Browser+Vid: ${cb}`, 'var(--t)');
+      rcnt.textContent = `${nodeOrder.filter(n => nodeData[n].deep).length} done`;
+    }
+
+    else if (msg.type === 'done') {
+      src.close(); stopBtn.style.display = 'none';
+      bar.style.width = '100%'; label.textContent = 'Done';
+      count.textContent = total > 0 ? `${total} / ${total}` : '';
+      const done = nodeOrder.filter(n => nodeData[n].deep).length;
+      status.textContent = `Completed — ${done} node${done !== 1 ? 's' : ''} deep tested`;
+    }
+
+    else if (msg.type === 'error') {
+      src.close(); stopBtn.style.display = 'none';
+      status.textContent = '❌ ' + msg.message; label.textContent = 'Error';
+    }
+  };
+
+  src.onerror = function () {
+    if (src.readyState === EventSource.CLOSED) return;
+    status.textContent = 'Connection lost — reload to retry'; src.close();
+  };
+})();
+</script>
+{% endblock %}

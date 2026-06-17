@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Charts — Node Tester{% endblock %}
+
+{% block content %}
+<div class="page-title">Charts</div>
+<div class="page-sub">Test score history per node</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+
+    <div class="fg" style="margin:0;min-width:180px">
+      <label>Module</label>
+      <select id="sel-module">
+        <option value="quick">Quick test</option>
+        <option value="deep">Deep test</option>
+        <option value="speed">Speed</option>
+        <option value="browser">Browser</option>
+        <option value="ws">WebSocket</option>
+        <option value="video">Video</option>
+      </select>
+    </div>
+
+    <div class="fg" style="margin:0;min-width:140px">
+      <label>Period</label>
+      <select id="sel-days">
+        <option value="7">Last 7 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="365">Last year</option>
+      </select>
+    </div>
+
+    <button id="btn-refresh" class="btn btn-ghost" style="margin-bottom:0">↺ Refresh</button>
+  </div>
+</div>
+
+{# Node filter — rendered after data loads #}
+<div id="node-filter" class="card" style="display:none;margin-bottom:16px">
+  <div class="card-title">Nodes</div>
+  <div id="node-checkboxes" style="display:flex;flex-wrap:wrap;gap:8px 16px"></div>
+  <div style="margin-top:10px;display:flex;gap:8px">
+    <button type="button" id="filter-all"  class="btn btn-ghost" style="font-size:12px;padding:4px 10px">All</button>
+    <button type="button" id="filter-none" class="btn btn-ghost" style="font-size:12px;padding:4px 10px">None</button>
+  </div>
+</div>
+
+<div class="card">
+  <canvas id="chart" style="width:100%;max-height:480px"></canvas>
+  <div id="chart-empty" class="empty" style="display:none">
+    <div class="empty-icon">📊</div>
+    <h3>No data yet</h3>
+    <p>Run a test to start collecting history. Data accumulates with each test.</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script>
+(function () {
+  const COLORS = [
+    '#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6',
+    '#06b6d4','#f97316','#ec4899','#10b981','#6366f1',
+    '#84cc16','#14b8a6','#a855f7','#fb923c','#0ea5e9',
+  ];
+
+  let _chart = null;
+  let _rawData = {};     // {node: [{score,timestamp,...}]}
+  let _visible = new Set();
+
+  const selModule = document.getElementById('sel-module');
+  const selDays   = document.getElementById('sel-days');
+  const btnRefresh = document.getElementById('btn-refresh');
+  const nodeFilter = document.getElementById('node-filter');
+  const nodeBoxes  = document.getElementById('node-checkboxes');
+  const chartEl    = document.getElementById('chart');
+  const emptyEl    = document.getElementById('chart-empty');
+
+  async function load() {
+    btnRefresh.disabled = true;
+    btnRefresh.textContent = '…';
+    const module = selModule.value;
+    const days   = selDays.value;
+    try {
+      const r = await fetch(`/api/charts/data?module=${module}&days=${days}`);
+      _rawData = await r.json();
+    } catch {
+      _rawData = {};
+    }
+    btnRefresh.disabled = false;
+    btnRefresh.textContent = '↺ Refresh';
+
+    const nodes = Object.keys(_rawData).sort();
+    // Preserve visibility choices; default new nodes to visible
+    const prev = new Set(_visible);
+    _visible = new Set(nodes.filter(n => prev.size === 0 || prev.has(n)));
+
+    renderFilter(nodes);
+    renderChart();
+  }
+
+  function renderFilter(nodes) {
+    if (!nodes.length) { nodeFilter.style.display = 'none'; return; }
+    nodeFilter.style.display = '';
+    nodeBoxes.innerHTML = '';
+    nodes.forEach((n, i) => {
+      const color = COLORS[i % COLORS.length];
+      const lbl = document.createElement('label');
+      lbl.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-family:ui-monospace,monospace';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = _visible.has(n);
+      cb.style.cssText = 'width:14px;height:14px;cursor:pointer;accent-color:' + color;
+      cb.addEventListener('change', () => {
+        if (cb.checked) _visible.add(n); else _visible.delete(n);
+        renderChart();
+      });
+      const dot = document.createElement('span');
+      dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0`;
+      lbl.append(cb, dot, document.createTextNode(n));
+      nodeBoxes.appendChild(lbl);
+    });
+  }
+
+  function renderChart() {
+    const nodes = Object.keys(_rawData).sort().filter(n => _visible.has(n));
+
+    if (!nodes.length || Object.keys(_rawData).length === 0) {
+      chartEl.style.display = 'none';
+      emptyEl.style.display = '';
+      if (_chart) { _chart.destroy(); _chart = null; }
+      return;
+    }
+    chartEl.style.display = '';
+    emptyEl.style.display = 'none';
+
+    const datasets = nodes.map((n, i) => {
+      const color = COLORS[i % COLORS.length];
+      const pts = (_rawData[n] || []).map(e => ({ x: e.timestamp, y: e.score }));
+      // Sort by time
+      pts.sort((a, b) => a.x < b.x ? -1 : 1);
+      return {
+        label: n,
+        data: pts,
+        borderColor: color,
+        backgroundColor: color + '22',
+        pointRadius: pts.length > 60 ? 2 : 4,
+        pointHoverRadius: 6,
+        tension: 0.2,
+        fill: false,
+      };
+    });
+
+    if (_chart) _chart.destroy();
+    _chart = new Chart(chartEl, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y ?? '-'}`,
+            }
+          },
+        },
+        scales: {
+          x: {
+            type: 'time',
+            time: { tooltipFormat: 'dd MMM HH:mm', displayFormats: { day: 'dd MMM', hour: 'dd MMM HH:mm' } },
+            ticks: { maxTicksLimit: 10, font: { size: 11 } },
+            grid: { color: '#e2e8f0' },
+          },
+          y: {
+            min: 0, max: 100,
+            ticks: { stepSize: 10, font: { size: 11 } },
+            grid: { color: '#e2e8f0' },
+            title: { display: true, text: 'Score', font: { size: 11 }, color: '#64748b' },
+          },
+        },
+      },
+    });
+  }
+
+  selModule.addEventListener('change', load);
+  selDays.addEventListener('change', load);
+  btnRefresh.addEventListener('click', load);
+
+  document.getElementById('filter-all').addEventListener('click', () => {
+    _visible = new Set(Object.keys(_rawData));
+    nodeBoxes.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true);
+    renderChart();
+  });
+  document.getElementById('filter-none').addEventListener('click', () => {
+    _visible.clear();
+    nodeBoxes.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+    renderChart();
+  });
+
+  load();
+})();
+</script>
+{% endblock %}

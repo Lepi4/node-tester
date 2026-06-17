@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Speed Test — Node Tester{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px">
+  <div class="page-title">Speed Test</div>
+  <span style="font-size:13px;color:var(--m)">{{ cfg.proxy_group }}</span>
+</div>
+<div class="page-sub" id="status-line">Connecting…</div>
+
+{# Progress bar #}
+<div class="card" style="padding:16px 20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <span id="progress-label" style="font-size:13px;color:var(--m)">Preparing…</span>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="progress-count" style="font-size:13px;font-weight:600;color:var(--t)"></span>
+      <button id="stop-btn" class="btn btn-ghost" style="display:none;padding:5px 12px;font-size:12px;border-color:#fca5a5;color:#dc2626">⬛ Stop</button>
+    </div>
+  </div>
+  <div style="background:var(--bg);border-radius:99px;height:6px;overflow:hidden">
+    <div id="progress-bar" style="height:100%;width:0%;background:var(--p);border-radius:99px;transition:width .3s"></div>
+  </div>
+</div>
+
+<div id="skipped-mihomo" class="hidden alert alert-warn" style="margin-bottom:10px"></div>
+<div id="skipped-ping"   class="hidden alert alert-info" style="margin-bottom:16px"></div>
+
+{# Results table #}
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 20px;border-bottom:1px solid var(--b);display:flex;gap:0">
+    <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Results</span>
+    <span id="result-count" style="font-size:11px;color:var(--m);margin-left:8px"></span>
+  </div>
+  <table id="results-table" style="width:100%;border-collapse:collapse">
+    <thead>
+      <tr style="background:var(--bg)">
+        <th style="width:44px"></th>
+        <th style="text-align:left;padding:8px 16px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Node</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Speed</th>
+        <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Run 1</th>
+        <th style="text-align:right;padding:8px 16px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Run 2</th>
+      </tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+  <div id="empty-state" style="padding:32px;text-align:center;color:var(--m);font-size:13px">
+    <span class="spin spin-dark" style="margin:0 auto 8px;display:block;width:20px;height:20px;border-width:2px"></span>
+    Waiting for results…
+  </div>
+</div>
+
+{# Activity log #}
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:10px 16px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Activity</span>
+    <span id="log-current" style="font-size:11px;color:var(--m)"></span>
+  </div>
+  <div id="log-body" style="height:180px;overflow-y:auto;padding:6px 12px;font-family:ui-monospace,monospace;font-size:11px;line-height:1.7;color:var(--t)"></div>
+</div>
+
+<style>
+  .gr-S { background:#f5f3ff;color:#6d28d9; }
+  .gr-A { background:#f0fdf4;color:#15803d; }
+  .gr-B { background:#eff6ff;color:#1d4ed8; }
+  .gr-C { background:#fefce8;color:#a16207; }
+  .gr-D { background:#fff7ed;color:#c2410c; }
+  .gr-F { background:#fef2f2;color:#dc2626; }
+  .grade-pill {
+    display:inline-flex;align-items:center;justify-content:center;
+    width:28px;height:28px;border-radius:6px;font-size:12px;font-weight:700;
+  }
+  #results-table tbody tr { border-top:1px solid var(--b); }
+  #results-table tbody tr:hover { background:var(--bg); }
+  #results-table td { padding:10px 12px;font-size:13px; }
+  #results-table td:first-child { padding:10px 8px 10px 16px; }
+  #results-table td:last-child { padding-right:20px; }
+  .mono { font-family:ui-monospace,monospace;font-size:12px; }
+  .spd-bar-wrap { width:80px;height:4px;background:var(--bg);border-radius:99px;display:inline-block;vertical-align:middle;margin-left:8px; }
+  .spd-bar { height:100%;border-radius:99px; }
+</style>
+
+<script>
+(function() {
+  const bar       = document.getElementById('progress-bar');
+  const label     = document.getElementById('progress-label');
+  const count     = document.getElementById('progress-count');
+  const rcnt      = document.getElementById('result-count');
+  const status    = document.getElementById('status-line');
+  const empty     = document.getElementById('empty-state');
+  const tbody     = document.getElementById('results-body');
+  const logBody   = document.getElementById('log-body');
+  const logCur    = document.getElementById('log-current');
+  const stopBtn   = document.getElementById('stop-btn');
+  const skMihomo  = document.getElementById('skipped-mihomo');
+  const skPing    = document.getElementById('skipped-ping');
+
+  let results = [];
+  let total   = 0;
+  let stopped = false;
+  let src;
+
+  function doStop() {
+    if (stopped) return;
+    stopped = true;
+    fetch('/api/stop/speed', {method: 'POST'}).catch(() => {});
+    if (src) src.close();
+    stopBtn.style.display = 'none';
+    label.textContent  = 'Stopped';
+    status.textContent = `Stopped — ${results.length} node${results.length !== 1 ? 's' : ''} completed`;
+    bar.style.background = '#9ca3af';
+  }
+
+  stopBtn.addEventListener('click', doStop);
+
+  function log(html, color) {
+    const el = document.createElement('div');
+    el.innerHTML = `<span style="color:${color||'inherit'}">${html}</span>`;
+    logBody.appendChild(el);
+    if (logBody.children.length > 400) logBody.removeChild(logBody.firstChild);
+    logBody.scrollTop = logBody.scrollHeight;
+  }
+
+  // Speed → bar fill % (cap at 100 Mbps for visual)
+  function spdPct(mbps) { return mbps != null ? Math.min(mbps / 100 * 100, 100) : 0; }
+
+  function spdColor(mbps) {
+    if (mbps == null)  return '#d1d5db';
+    if (mbps >= 50)    return '#7c3aed';
+    if (mbps >= 20)    return '#16a34a';
+    if (mbps >= 10)    return '#2563eb';
+    if (mbps >= 5)     return '#ca8a04';
+    if (mbps >= 1)     return '#ea580c';
+    return '#dc2626';
+  }
+
+  function fmtMbps(mbps) {
+    return mbps != null
+      ? `<span class="mono">${mbps} Mbps</span>`
+      : `<span style="color:var(--m)">—</span>`;
+  }
+
+  function renderResults() {
+    const sorted = [...results].sort((a, b) => (b.dl_mbps || 0) - (a.dl_mbps || 0));
+    tbody.innerHTML = '';
+    sorted.forEach(r => {
+      const tr = document.createElement('tr');
+      const s1 = r.samples[0] != null ? r.samples[0]+' Mbps' : '—';
+      const s2 = r.samples[1] != null ? r.samples[1]+' Mbps' : '—';
+      tr.innerHTML = `
+        <td><span class="grade-pill gr-${r.grade}">${r.grade}</span></td>
+        <td style="font-weight:500">${r.name}</td>
+        <td style="text-align:right">
+          ${fmtMbps(r.dl_mbps)}
+          <span class="spd-bar-wrap"><span class="spd-bar" style="width:${spdPct(r.dl_mbps)}%;background:${spdColor(r.dl_mbps)}"></span></span>
+        </td>
+        <td style="text-align:right"><span class="mono" style="color:var(--m)">${s1}</span></td>
+        <td style="text-align:right"><span class="mono" style="color:var(--m)">${s2}</span></td>`;
+      tbody.appendChild(tr);
+    });
+    if (sorted.length) empty.style.display = 'none';
+    rcnt.textContent = `${sorted.length} node${sorted.length !== 1 ? 's' : ''}`;
+  }
+
+  src = new EventSource('/api/run/speed');
+
+  src.onmessage = function(e) {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'start') {
+      total = msg.total;
+      status.textContent = `Testing ${total} node${total !== 1 ? 's' : ''}…`;
+      label.textContent  = 'Running…';
+      count.textContent  = `0 / ${total}`;
+      stopBtn.style.display = '';
+
+      const dead   = (msg.skipped || []).filter(n => n.source === 'mihomo');
+      const noResp = (msg.skipped || []).filter(n => n.source === 'ping');
+      if (dead.length) {
+        skMihomo.classList.remove('hidden');
+        skMihomo.innerHTML = `<strong>${dead.length} dead (Mihomo URLTest):</strong> ${dead.map(n=>n.name).join(', ')}`;
+      }
+      if (noResp.length) {
+        skPing.classList.remove('hidden');
+        skPing.innerHTML = `<strong>${noResp.length} unreachable (ping):</strong> ${noResp.map(n=>n.name).join(', ')}`;
+      }
+    }
+
+    else if (msg.type === 'step') {
+      if (msg.phase === 'speed_start') {
+        logCur.textContent = msg.node;
+        log(`▶ <strong>${msg.node}</strong>`, 'var(--t)');
+      }
+      else if (msg.phase === 'speed_sample') {
+        const ok  = msg.mbps != null;
+        const col = ok ? spdColor(msg.mbps) : '#dc2626';
+        const val = ok ? `${msg.mbps} Mbps` : `failed`;
+        const errDetail = (!ok && msg.error) ? ` <span style="color:#dc2626;font-size:10px">${msg.error}</span>` : '';
+        const proxyInfo = msg.proxy_url ? ` <span style="color:var(--m);font-size:10px">via ${msg.proxy_url}</span>` : '';
+        log(`&nbsp;&nbsp;Run ${msg.attempt}: <span style="color:${col}">${val}</span>${errDetail}${proxyInfo}`, 'var(--m)');
+      }
+    }
+
+    else if (msg.type === 'node') {
+      const r   = msg.data;
+      const pct = Math.round(msg.progress / msg.total * 100);
+      bar.style.width   = pct + '%';
+      count.textContent = `${msg.progress} / ${msg.total}`;
+      const col = spdColor(r.dl_mbps);
+      const val = r.dl_mbps != null ? `${r.dl_mbps} Mbps` : 'failed';
+      log(`&nbsp;&nbsp;✓ <strong style="color:${col}">${r.grade} · ${val}</strong>`, col);
+      results.push(r);
+      renderResults();
+    }
+
+    else if (msg.type === 'done') {
+      src.close();
+      stopBtn.style.display = 'none';
+      bar.style.width   = '100%';
+      label.textContent = 'Done';
+      count.textContent = total > 0 ? `${total} / ${total}` : '';
+      status.textContent = `Completed — ${results.length} node${results.length !== 1 ? 's' : ''} tested`;
+    }
+
+    else if (msg.type === 'error') {
+      src.close();
+      stopBtn.style.display = 'none';
+      status.textContent = '❌ ' + msg.message;
+      label.textContent  = 'Error';
+    }
+  };
+
+  src.onerror = function() {
+    if (src.readyState === EventSource.CLOSED) return;
+    status.textContent = 'Connection lost — reload to retry';
+    src.close();
+  };
+})();
+</script>
+{% endblock %}

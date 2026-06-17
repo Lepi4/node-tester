@@ -1,0 +1,498 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Node Tester{% endblock %}
+
+{% block content %}
+
+{% if not configured %}
+  <div class="card empty">
+    <div class="empty-icon">🔌</div>
+    <h3>Mihomo not configured</h3>
+    <p>Connect to your Mihomo instance to start testing proxy nodes.</p>
+    <a href="/settings" class="btn btn-primary mt16">Configure Mihomo</a>
+  </div>
+
+{% else %}
+
+  {# ── Connection status ── #}
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="dot {{ 'dot-ok' if status and status.ok else 'dot-err' }}"></div>
+      <div style="flex:1">
+        <div class="status-label">{{ 'Connected' if status and status.ok else 'Disconnected' }}</div>
+        <div class="status-meta">
+          {{ cfg.mihomo_host }}:{{ cfg.mihomo_port }}
+          {% if status and status.ok %}
+            &nbsp;·&nbsp; Mihomo{% if status.meta %} Meta{% endif %} v{{ status.version }}
+            {% if current_proxy %}
+              &nbsp;·&nbsp; using: <strong style="color:#16a34a">{{ current_proxy }}</strong>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      {% if status and status.ok %}
+      <div style="display:flex;gap:8px;align-items:center">
+        {% if cfg.proxy_group %}
+        {% set is_direct = current_proxy == "DIRECT" %}
+        <button id="direct-btn"
+                data-direct="{{ 'true' if is_direct else 'false' }}"
+                data-restore="{{ alive_nodes[0] if alive_nodes else '' }}"
+                class="btn {{ 'btn-primary' if is_direct else 'btn-ghost' }}"
+                style="padding:6px 12px;font-size:12px;{% if is_direct %}background:#dc2626;border-color:#dc2626;{% endif %}"
+                title="{{ 'Disable Direct — restore proxy' if is_direct else 'Enable Direct mode (bypass proxy)' }}">
+          {{ '⊘ Direct ON' if is_direct else '⊘ Direct' }}
+        </button>
+        {% endif %}
+        <form method="GET" action="/" style="margin:0">
+          <button type="submit" class="btn btn-ghost" style="padding:6px 10px;font-size:12px" title="Refresh">↻ Refresh</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% if status and not status.ok %}
+    <div class="alert alert-err mt12">{{ status.error }}</div>
+    {% endif %}
+    {% if status and status.ok and not cfg.proxy_group %}
+    <div class="alert alert-warn mt12">No proxy group selected — <a href="/settings">open settings</a> to choose one.</div>
+    {% endif %}
+  </div>
+
+  {# ── Nodes table ── #}
+  {% if status and status.ok and cfg.proxy_group and (alive_nodes or dead_nodes) %}
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:12px 20px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Nodes — {{ cfg.proxy_group }}</span>
+      <span style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;color:var(--m)">{{ alive_nodes | length }} alive · {{ dead_nodes | length }} dead</span>
+        {% if cfg.monitor_interval_min and cfg.monitor_interval_min > 0 %}
+        <span id="monitor-status" style="font-size:10px;color:var(--m);border-left:1px solid var(--b);padding-left:10px">
+          <span class="spin" style="width:8px;height:8px;border-width:1px"></span> Monitor
+        </span>
+        {% endif %}
+      </span>
+    </div>
+    <div id="monitor-banner" style="display:none;padding:8px 20px;background:#fefce8;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e">
+      ⚠ Node status changed —
+      <a href="/" style="color:#92400e;font-weight:600;text-decoration:underline">refresh page</a> to update
+    </div>
+    <div id="test-progress-bar" style="display:none;background:#eff6ff;border-bottom:1px solid #bfdbfe;color:#1e40af">
+      {# collapsed row #}
+      <div style="padding:8px 20px;display:flex;align-items:center;gap:10px;cursor:pointer" id="test-progress-toggle">
+        <span class="spin spin-dark" style="width:10px;height:10px;flex-shrink:0"></span>
+        <span id="test-progress-label" style="font-size:12px;font-weight:600">Testing…</span>
+        <div style="flex:1;background:#dbeafe;border-radius:99px;height:6px;overflow:hidden">
+          <div id="test-progress-fill" style="height:100%;background:#3b82f6;border-radius:99px;width:0%;transition:width .3s"></div>
+        </div>
+        <span id="test-progress-count" style="white-space:nowrap;font-size:12px;font-variant-numeric:tabular-nums"></span>
+        <button id="test-stop-btn" style="padding:3px 10px;font-size:11px;border-radius:5px;border:1px solid #93c5fd;background:#fff;color:#1e40af;cursor:pointer;white-space:nowrap">■ Stop</button>
+        <span id="test-expand-arrow" style="font-size:10px;opacity:.5">▼</span>
+      </div>
+      {# expanded detail #}
+      <div id="test-progress-detail" style="display:none;padding:0 20px 12px;max-height:260px;overflow-y:auto;font-size:12px">
+        <div id="test-progress-nodes" style="display:flex;flex-direction:column;gap:3px"></div>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;min-width:780px">
+      <thead>
+        <tr style="background:var(--bg)">
+          <th style="width:18px"></th>
+          <th style="text-align:left;padding:7px 6px 7px 4px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Node</th>
+          <th style="text-align:center;padding:7px 4px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:62px" title="Combined score (Quick 30% + Browser 20% + Speed 15% + WS 10% + DPI 25%)">Deep</th>
+          <th style="text-align:center;padding:7px 4px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:65px">Quick</th>
+          <th style="text-align:center;padding:7px 4px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:76px" title="httpx: BBC+TMDB+TG images (2 runs)">Browser</th>
+          <th style="text-align:center;padding:7px 4px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:76px" title="Playwright: DASH streaming + TG video (2 runs)">Video</th>
+          <th style="text-align:center;padding:7px 4px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:65px">Speed</th>
+          <th style="text-align:center;padding:7px 4px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:62px">WS</th>
+          <th style="text-align:center;padding:7px 4px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px;width:65px" title="DPI bypass: 36 hosts, 64KB POST (TCP 16-20)">DPI</th>
+        </tr>
+      </thead>
+      {# ── Node row macro ── #}
+      {% macro node_row(name, dot_color) %}
+      {% set r      = node_results.get(name, {}) %}
+      {% set quick  = r.get('quick') %}
+      {% set deep   = r.get('computed_deep') %}
+      {% set speed  = r.get('speed') %}
+      {% set ws     = r.get('ws') %}
+      {% set browser = r.get('browser') %}
+      {% set video  = r.get('video') %}
+      {% set dpi    = r.get('dpi') %}
+      {% set is_cur = name == current_proxy %}
+      <tr style="{{ 'background:#fffbeb;' if is_cur else '' }}border-top:1px solid var(--b)">
+        <td style="padding:9px 4px 9px 14px;text-align:center">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{ dot_color }}"></span>
+        </td>
+        <td style="padding:9px 12px 9px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          {% if is_cur %}<span style="color:#d97706;font-size:11px;margin-right:4px" title="Currently active">★</span>{% endif %}
+          <span style="{{ 'font-weight:600;' if is_cur else '' }}font-size:13px" title="{{ name }}">{{ name }}</span>
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          {% if deep %}
+          <span class="gpill gr-{{ deep.grade }}">{{ deep.grade }}</span>
+          <span class="gval">{{ deep.score }}</span>
+          {% if not deep.complete %}<span class="partial" title="{{ deep.modules }}/6 modules">{{ deep.modules }}/6</span>{% endif %}
+          {% else %}<span class="dash">—</span>{% endif %}
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          {% if quick %}
+          <span class="gpill gr-{{ quick.grade }}">{{ quick.grade }}</span>
+          <span class="gval">{{ quick.score }}</span>
+          {% if quick.issues %}<span class="issues" title="Failed: {{ quick.issues | join(', ') }}">{{ quick.issues | length }}✗</span>{% endif %}
+          <div class="gtime">{{ time_ago(quick.timestamp) }}</div>
+          {% else %}<span class="dash">—</span>{% endif %}
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          {% if browser %}
+            <span class="gpill gr-{{ browser.grade }}">{{ browser.grade }}</span>
+            <span class="gval">{{ browser.score }}/10</span>
+            {% if browser.tg_img_total and browser.tg_img_total > 0 %}
+            <div style="font-size:10px;color:{% if browser.tg_img_ok == browser.tg_img_total %}#60a5fa{% elif browser.tg_img_ok > 0 %}#ca8a04{% else %}#dc2626{% endif %}">TG {{ browser.tg_img_ok }}/{{ browser.tg_img_total }}{% if browser.tg_ttfb_ms %} {{ browser.tg_ttfb_ms }}ms{% endif %}</div>
+            {% endif %}
+            <div class="gtime">{{ browser.ttfb_avg }}ms · {{ time_ago(browser.timestamp) }}</div>
+            {% if browser.sample_scores %}
+            <div class="gtime">R{{ browser.sample_scores | join(' · R') }}</div>
+            {% endif %}
+          {% else %}<span class="dash">—</span>{% endif %}
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          {% if video %}
+            <span class="gpill gr-{{ video.grade }}">{{ video.grade }}</span>
+            <span class="gval">{{ video.score }}/10</span>
+            {% if video.videos_buffered is not none %}
+            <div style="font-size:10px;color:var(--m)">📽 {{ video.videos_buffered }}/{{ video.total }}{% if video.buf_secs %} · {{ video.buf_secs }}s{% endif %}</div>
+            {% endif %}
+            {% if video.tg_total and video.tg_total > 0 %}
+            <div style="font-size:10px;color:{% if video.tg_ok == video.tg_total %}#16a34a{% elif video.tg_ok > 0 %}#ca8a04{% else %}#dc2626{% endif %}">TG {{ video.tg_ok }}/{{ video.tg_total }}{% if video.tg_ttb_avg %} {{ video.tg_ttb_avg }}ms{% endif %}</div>
+            {% endif %}
+            <div class="gtime">{{ time_ago(video.timestamp) }}</div>
+            {% if video.sample_scores %}
+            <div class="gtime">R{{ video.sample_scores | join(' · R') }}</div>
+            {% endif %}
+          {% else %}<span class="dash">—</span>{% endif %}
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          {% if speed %}
+          <span class="gpill gr-{{ speed.grade }}">{{ speed.grade }}</span>
+          <span class="gval">{{ speed.score }}/15</span>
+          <div class="gtime">{{ speed.dl_mbps }}M · {{ time_ago(speed.timestamp) }}</div>
+          {% else %}<span class="dash">—</span>{% endif %}
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          {% if ws %}
+          <span class="gpill gr-{{ ws.grade }}">{{ ws.grade }}</span>
+          <span class="gval">{{ ws.score }}/10</span>
+          <div class="gtime">{{ ws.rtt_avg }}ms · {{ time_ago(ws.timestamp) }}</div>
+          {% else %}<span class="dash">—</span>{% endif %}
+        </td>
+        <td style="padding:6px 4px;text-align:center">
+          {% if dpi %}
+          <span class="gpill gr-{{ dpi.grade }}">{{ dpi.grade }}</span>
+          <span class="gval">{{ dpi.score }}/10</span>
+          <div class="gtime">{{ dpi.passed_count }}/{{ dpi.alive_count }} · {{ time_ago(dpi.timestamp) }}</div>
+          {% else %}<span class="dash">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endmacro %}
+
+      <tbody>
+        {# Main alive nodes #}
+        {% for name in alive_nodes %}
+        {{ node_row(name, '#16a34a') }}
+        {% endfor %}
+
+        {# Backup alive nodes — separator + dimmed dot #}
+        {% if alive_backup %}
+        <tr style="border-top:2px dashed var(--b)">
+          <td colspan="9" style="padding:4px 14px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;background:var(--s)">
+            Backup nodes
+          </td>
+        </tr>
+        {% for name in alive_backup %}
+        {{ node_row(name, '#60a5fa') }}
+        {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  {# ── Dead nodes ── #}
+  {% if dead_nodes %}
+  <details style="margin-bottom:16px">
+    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--s);border:1px solid var(--b);border-radius:var(--r);font-size:12px;color:var(--m);user-select:none">
+      <span id="dead-arrow" style="font-size:10px;transition:transform .15s">▶</span>
+      <span style="font-weight:700;text-transform:uppercase;letter-spacing:.5px">Dead / no URLTest data</span>
+      <span style="margin-left:4px;background:var(--bg);border:1px solid var(--b);border-radius:99px;padding:1px 8px;font-size:11px">{{ dead_nodes | length }}</span>
+    </summary>
+    <div style="border:1px solid var(--b);border-top:none;border-radius:0 0 var(--r) var(--r);background:var(--s);padding:8px 0">
+      {% for name in dead_nodes %}
+      <div style="padding:6px 20px;font-size:13px;color:var(--m);{{ 'border-top:1px solid var(--b);' if not loop.first else '' }}display:flex;align-items:center;gap:8px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#d1d5db;flex-shrink:0"></span>
+        {{ name }}
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  <script>
+    document.querySelector('details').addEventListener('toggle', function() {
+      document.getElementById('dead-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
+    });
+  </script>
+  {% endif %}
+
+  {% if disabled_nodes %}
+  <details style="margin-bottom:16px">
+    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--s);border:1px solid var(--b);border-radius:var(--r);font-size:12px;color:var(--m);user-select:none">
+      <span style="font-size:10px;transition:transform .15s">▶</span>
+      <span style="font-weight:700;text-transform:uppercase;letter-spacing:.5px">Excluded (manually disabled)</span>
+      <span style="margin-left:4px;background:var(--bg);border:1px solid var(--b);border-radius:99px;padding:1px 8px;font-size:11px">{{ disabled_nodes | length }}</span>
+    </summary>
+    <div style="border:1px solid var(--b);border-top:none;border-radius:0 0 var(--r) var(--r);background:var(--s);padding:8px 0">
+      {% for name in disabled_nodes %}
+      <div style="padding:6px 20px;font-size:13px;color:var(--m);{{ 'border-top:1px solid var(--b);' if not loop.first else '' }}display:flex;align-items:center;gap:8px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#e5e7eb;flex-shrink:0"></span>
+        {{ name }}
+        <span style="font-size:10px;color:#9ca3af">disabled in settings</span>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  {% endif %}
+
+  {# ── Test modules ── #}
+  {% set can_run = status and status.ok and cfg.proxy_group and (alive_nodes or alive_backup) %}
+  <div class="g2">
+    <div class="card test-card">
+      <div class="card-title">Module 1 — Quick Test</div>
+      <p>Latency &amp; stability across all active nodes. Non-disruptive.</p>
+      <div class="test-meta"><span>⏱ ~1 min / node</span><span>✅ Non-disruptive</span></div>
+      <div>{% if can_run %}<a href="/run/quick" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+    </div>
+
+    <div class="card test-card">
+      <div class="card-title">Module 2 — Speed Test</div>
+      <p>Download speed via Cloudflare (5 MB × 2, best of two). Switches proxy per node.</p>
+      <div class="test-meta"><span>⏱ ~30 s / node</span><span>⚠ Disruptive</span></div>
+      <div>{% if can_run %}<a href="/run/speed" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+    </div>
+
+    <div class="card test-card">
+      <div class="card-title">Module 3 — WebSocket Test</div>
+      <p>RTT ping-pong (×10), stability &amp; throughput (50 KB). Runs twice, takes best.</p>
+      <div class="test-meta"><span>⏱ ~30 s / node</span><span>⚠ Disruptive</span></div>
+      <div>{% if can_run %}<a href="/run/ws" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+    </div>
+
+    <div class="card test-card">
+      <div class="card-title">Module 4 — Browser Test</div>
+      <p>BBC + TMDB pages (TTFB, media load) + Telegram CDN images. Runs twice, takes best.</p>
+      <div class="test-meta"><span>⏱ ~20 s / node</span><span>⚠ Disruptive</span></div>
+      <div>{% if can_run %}<a href="/run/browser" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+    </div>
+
+    <div class="card test-card">
+      <div class="card-title">Module 5 — Video Test</div>
+      <p>Playwright: DASH-IF streaming + Telegram video embeds. 2 runs, takes best. Shared persistent browser.</p>
+      <div class="test-meta"><span>⏱ ~1 min / node</span><span>⚠ Disruptive</span></div>
+      <div>{% if can_run %}<a href="/run/video" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+    </div>
+
+    <div class="card test-card">
+      <div class="card-title">Module 6 — DPI Bypass Test</div>
+      <p>TCP 16-20 detection: HEAD + 64 KB POST to 36 hosts across 18 providers. Timeout = DPI blocked. Scores 0-10 by pass rate.</p>
+      <div class="test-meta"><span>⏱ ~30 s / node</span><span>⚠ Disruptive</span></div>
+      <div>{% if can_run %}<a href="/run/dpi" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="card test-card" style="border:2px solid var(--p)">
+    <div class="card-title" style="color:var(--p)">Deep Test — All Modules Combined</div>
+    <p>Runs Quick → Speed → WS → Browser → Video → DPI per node. Browser score = httpx 60% + Playwright 40%. Deep = Quick 30% + DPI 25% + Browser 20% + Speed 15% + WS 10%.</p>
+    <div class="test-meta"><span>⏱ ~4 min / node</span><span>⚠ Disruptive</span></div>
+    <div>{% if can_run %}<a href="/run/deep" class="btn btn-primary">▶ Run Deep Test</a>{% else %}<button class="btn btn-primary" disabled>▶ Run Deep Test</button>{% endif %}</div>
+  </div>
+
+{% endif %}
+
+<script>
+// ── Monitor JS polling ────────────────────────────────────────────────────
+(function () {
+  const statusEl = document.getElementById('monitor-status');
+  const banner   = document.getElementById('monitor-banner');
+  if (!statusEl) return; // monitoring disabled
+
+  // Alive set: initialized from first API response to avoid false positives
+  // (page render uses split_active_nodes; API uses classify_nodes — they differ slightly)
+  let currentAlive = null;
+
+  function fmtAgo(isoStr) {
+    if (!isoStr) return '…';
+    const s = Math.round((Date.now() - new Date(isoStr + 'Z')) / 1000);
+    if (s < 60)   return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    return Math.floor(s / 3600) + 'h ago';
+  }
+
+  let reloading = false;
+  let testWasRunning = false;
+
+  async function poll() {
+    if (reloading) return;
+    try {
+      const r = await fetch('/api/nodes/status');
+      const d = await r.json();
+      if (d.error) {
+        statusEl.textContent = '⚠ Monitor error';
+        return;
+      }
+      let label = 'Monitor: ' + fmtAgo(d.updated_at);
+      if (d.last_switch) {
+        label += ' · switched → ' + d.last_switch.to;
+      }
+      statusEl.textContent = label;
+      // First poll: establish baseline from API (avoids false positives)
+      if (currentAlive === null) {
+        currentAlive = new Set(d.alive);
+      } else {
+        const newAlive = new Set(d.alive);
+        const changed  = d.alive.some(n => !currentAlive.has(n))
+                      || [...currentAlive].some(n => !newAlive.has(n));
+        if (changed && banner && banner.style.display === 'none') {
+          banner.style.display = '';
+        }
+      }
+    } catch {
+      statusEl.textContent = 'Monitor: unreachable';
+    }
+  }
+
+  poll();
+  setInterval(poll, 30000);
+})();
+
+// ── Test progress indicator ──────────────────────────────────────────────
+(function () {
+  const bar      = document.getElementById('test-progress-bar');
+  const label    = document.getElementById('test-progress-label');
+  const fill     = document.getElementById('test-progress-fill');
+  const count    = document.getElementById('test-progress-count');
+  const toggle   = document.getElementById('test-progress-toggle');
+  const detail   = document.getElementById('test-progress-detail');
+  const nodeList = document.getElementById('test-progress-nodes');
+  const stopBtn  = document.getElementById('test-stop-btn');
+  const arrow    = document.getElementById('test-expand-arrow');
+  if (!bar) return;
+
+  const names = { quick: 'Quick test', deep: 'Deep test' };
+  let expanded = false;
+  let currentType = null;
+
+  toggle.addEventListener('click', e => {
+    if (e.target === stopBtn) return;
+    expanded = !expanded;
+    detail.style.display = expanded ? '' : 'none';
+    arrow.textContent    = expanded ? '▲' : '▼';
+  });
+
+  stopBtn.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (!currentType) return;
+    stopBtn.disabled = true;
+    stopBtn.textContent = '…';
+    try {
+      await fetch('/api/stop/' + currentType, { method: 'POST' });
+    } catch {}
+    setTimeout(() => { stopBtn.disabled = false; stopBtn.textContent = '■ Stop'; }, 1500);
+  });
+
+  async function pollTest() {
+    try {
+      const r = await fetch('/api/test-status');
+      const d = await r.json();
+      if (d.type) {
+        currentType = d.type;
+        bar.style.display = '';
+        const pct = d.total > 0 ? Math.round(d.done / d.total * 100) : 0;
+        label.textContent = (names[d.type] || d.type) + ' running…';
+        fill.style.width  = pct + '%';
+        count.textContent = d.done + ' / ' + d.total;
+
+        // Populate node list from full status
+        if (d.nodes && nodeList) {
+          nodeList.innerHTML = '';
+          (d.nodes || []).forEach(n => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:2px 0';
+            const dot = document.createElement('span');
+            dot.style.cssText = n.done
+              ? 'width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0'
+              : 'width:8px;height:8px;border-radius:50%;background:#cbd5e1;flex-shrink:0';
+            const name = document.createElement('span');
+            name.style.cssText = 'font-family:ui-monospace,monospace;color:#1e40af';
+            name.textContent = n.name;
+            const sc = document.createElement('span');
+            sc.style.cssText = 'margin-left:auto;color:#64748b';
+            sc.textContent   = n.score != null ? n.score : '';
+            row.append(dot, name, sc);
+            nodeList.appendChild(row);
+          });
+        }
+      } else {
+        if (testWasRunning) {
+          if (banner) banner.style.display = '';
+        }
+        currentType = null;
+        bar.style.display = 'none';
+        if (nodeList) nodeList.innerHTML = '';
+      }
+      testWasRunning = !!d.type;
+    } catch {
+      bar.style.display = 'none';
+    }
+  }
+
+  pollTest();
+  setInterval(pollTest, 4000);
+})();
+
+// ── Direct mode ───────────────────────────────────────────────────────────
+(function () {
+  const btn = document.getElementById('direct-btn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    const isDirect = btn.dataset.direct === 'true';
+    const target   = isDirect ? (btn.dataset.restore || '') : 'DIRECT';
+    if (!target) { btn.disabled = false; return; }
+    const fd = new FormData();
+    fd.append('node', target);
+    try {
+      const r = await fetch('/api/set-proxy', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (d.ok) location.reload();
+      else { alert('Error: ' + d.error); btn.disabled = false; }
+    } catch { btn.disabled = false; }
+  });
+})();
+</script>
+
+<style>
+  .gpill {
+    display:inline-flex;align-items:center;justify-content:center;
+    width:20px;height:20px;border-radius:4px;font-size:10px;font-weight:700;vertical-align:middle;
+  }
+  .gval    { font-size:12px;font-weight:600;margin-left:4px;vertical-align:middle; }
+  .gtime   { font-size:10px;color:var(--m);margin-top:1px; }
+  .dash    { color:var(--m);font-size:13px; }
+  .partial { margin-left:4px;font-size:9px;color:var(--m);vertical-align:middle; }
+  .issues  { margin-left:4px;font-size:10px;padding:1px 4px;border-radius:4px;background:#fef2f2;color:#dc2626;vertical-align:middle; }
+  .gr-S { background:#f5f3ff;color:#6d28d9; }
+  .gr-A { background:#f0fdf4;color:#15803d; }
+  .gr-B { background:#eff6ff;color:#1d4ed8; }
+  .gr-C { background:#fefce8;color:#a16207; }
+  .gr-D { background:#fff7ed;color:#c2410c; }
+  .gr-F { background:#fef2f2;color:#dc2626; }
+</style>
+
+{% endblock %}

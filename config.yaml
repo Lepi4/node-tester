@@ -1,0 +1,39 @@
+name: "Node Tester"
+version: "1.0.0"
+slug: "node_tester"
+description: "Proxy node performance testing via Mihomo/Clash — Quick, Speed, WS, Browser, Video, DPI"
+url: "https://github.com/lepi4/node-tester"
+arch:
+  - amd64
+  - aarch64
+  - armhf
+  - armv7
+startup: application
+boot: auto
+init: false
+
+ports:
+  8080/tcp: 8080
+ports_description:
+  8080/tcp: "Node Tester Web UI"
+
+map:
+  - config:rw
+
+options:
+  mihomo_host: "http://homeassistant.local"
+  mihomo_port: 9090
+  mihomo_secret: ""
+  proxy_group: ""
+  mixed_port: 7893
+  proxy_user: ""
+  proxy_pass: ""
+
+schema:
+  mihomo_host: str
+  mihomo_port: int
+  mihomo_secret: str
+  proxy_group: str
+  mixed_port: int
+  proxy_user: str
+  proxy_pass: str

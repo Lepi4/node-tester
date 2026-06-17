@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}DPI Test — Node Tester{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px">
+  <div class="page-title">DPI Bypass Test</div>
+  <span style="font-size:13px;color:var(--m)">{{ cfg.proxy_group }}</span>
+</div>
+<div class="page-sub" id="status-line">Connecting…</div>
+
+<div class="card" style="padding:16px 20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <span id="progress-label" style="font-size:13px;color:var(--m)">Preparing…</span>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="progress-count" style="font-size:13px;font-weight:600;color:var(--t)"></span>
+      <button id="stop-btn" class="btn btn-ghost" style="display:none;padding:5px 12px;font-size:12px;border-color:#fca5a5;color:#dc2626">⬛ Stop</button>
+    </div>
+  </div>
+  <div style="background:var(--bg);border-radius:99px;height:6px;overflow:hidden">
+    <div id="progress-bar" style="height:100%;width:0%;background:var(--p);border-radius:99px;transition:width .3s"></div>
+  </div>
+</div>
+
+<div id="skipped-mihomo" class="hidden alert alert-warn" style="margin-bottom:10px"></div>
+<div id="skipped-ping"   class="hidden alert alert-info" style="margin-bottom:16px"></div>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 20px;border-bottom:1px solid var(--b);display:flex;gap:0">
+    <span style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px">Results</span>
+    <span id="result-count" style="font-size:11px;color:var(--m);margin-left:8px"></span>
+  </div>
+  <table id="results-table" style="width:100%;border-collapse:collapse;table-layout:fixed">
+    <thead>
+      <tr style="background:var(--bg)">
+        <th style="width:44px"></th>
+        <th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Node</th>
+        <th style="width:70px;text-align:center;padding:8px 8px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px" title="DPI Bypass score 0-10">Score</th>
+        <th style="width:80px;text-align:center;padding:8px 8px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px" title="Hosts that passed 64KB POST / alive hosts">Passed</th>
+        <th style="width:220px;text-align:left;padding:8px 12px;font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.4px">Host results</th>
+      </tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+  <div id="empty-state" style="padding:32px;text-align:center;color:var(--m);font-size:13px">
+    <span class="spin spin-dark" style="margin:0 auto 8px;display:block;width:20px;height:20px;border-width:2px"></span>
+    Waiting for results…
+  </div>
+</div>
+
+{# Live host checklist per-node (shows while test runs) #}
+<div id="live-card" class="card" style="display:none;padding:14px 20px">
+  <div style="font-size:11px;font-weight:700;color:var(--m);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+    Live — <span id="live-node-name">—</span>
+    <span id="live-stats" style="font-weight:400;font-size:11px;color:var(--m);margin-left:8px"></span>
+  </div>
+  <div id="live-hosts" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+</div>
+
+<script>
+const es = new EventSource('/api/run/dpi');
+let total = 0, completed = 0;
+let liveAlive = 0, livePassed = 0, liveTotal = 0;
+
+document.getElementById('stop-btn').addEventListener('click', async () => {
+  await fetch('/api/stop/dpi', {method:'POST'});
+  document.getElementById('stop-btn').style.display = 'none';
+  document.getElementById('status-line').textContent = 'Stopped.';
+  es.close();
+});
+
+es.onmessage = e => {
+  const msg = JSON.parse(e.data);
+
+  if (msg.type === 'start') {
+    total = msg.total;
+    document.getElementById('status-line').textContent =
+      `Testing ${total} node${total !== 1 ? 's' : ''} · ${msg.group}`;
+    document.getElementById('progress-label').textContent = `0 / ${total}`;
+    document.getElementById('stop-btn').style.display = '';
+    document.getElementById('empty-state').style.display = 'none';
+    if (msg.skipped?.length) {
+      const m = document.getElementById('skipped-mihomo');
+      m.textContent = `Skipped (dead): ${msg.skipped.map(s=>s.name).join(', ')}`;
+      m.classList.remove('hidden');
+    }
+  }
+
+  if (msg.type === 'step') {
+    const p = msg.phase;
+
+    if (p === 'dpi_start') {
+      liveAlive = 0; livePassed = 0; liveTotal = msg.total;
+      document.getElementById('live-card').style.display = '';
+      document.getElementById('live-node-name').textContent = msg.node;
+      document.getElementById('live-stats').textContent = '';
+      document.getElementById('live-hosts').innerHTML = '';
+    }
+
+    if (p === 'dpi_host') {
+      if (msg.alive) liveAlive++;
+      if (msg.dpi) livePassed++;
+      document.getElementById('live-stats').textContent =
+        `${livePassed}/${liveAlive} passed`;
+
+      const dot = document.createElement('span');
+      const color = !msg.alive ? '#9ca3af'
+                  : msg.dpi   ? '#16a34a'
+                  : msg.dpi === false ? '#dc2626'
+                  : '#ca8a04';
+      dot.title = `${msg.provider} · ${msg.host}${msg.error ? ' · ' + msg.error : ''}`;
+      dot.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};cursor:default`;
+      document.getElementById('live-hosts').appendChild(dot);
+    }
+
+    if (p === 'dpi_done') {
+      document.getElementById('live-card').style.display = 'none';
+    }
+  }
+
+  if (msg.type === 'node') {
+    const r = msg.data;
+    completed++;
+    const pct = total ? Math.round(completed / total * 100) : 0;
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('progress-label').textContent = `${completed} / ${total}`;
+    document.getElementById('progress-count').textContent = `${pct}%`;
+    document.getElementById('result-count').textContent = `(${completed})`;
+
+    const gradeColor = {S:'#7c3aed',A:'#16a34a',B:'#2563eb',C:'#ca8a04',D:'#ea580c',F:'#dc2626'};
+    const gc = gradeColor[r.grade] || '#6b7280';
+
+    // Build mini host dots
+    const dots = (r.results || []).map(h => {
+      const c = !h.alive ? '#9ca3af' : h.dpi ? '#16a34a' : '#dc2626';
+      return `<span title="${h.provider} · ${h.host}${h.error?' · '+h.error:''}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c}"></span>`;
+    }).join('');
+
+    const tbody = document.getElementById('results-body');
+    const tr = document.createElement('tr');
+    tr.style.borderTop = '1px solid var(--b)';
+    tr.innerHTML = `
+      <td style="padding:9px 4px 9px 14px;text-align:center">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a"></span>
+      </td>
+      <td style="padding:9px 12px;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.name}">${r.name}</td>
+      <td style="padding:8px;text-align:center">
+        <span class="gpill" style="background:${gc}20;color:${gc};border:1px solid ${gc}40">${r.grade}</span>
+        <span class="gval">${r.score}/10</span>
+      </td>
+      <td style="padding:8px;text-align:center;font-size:12px;color:var(--t)">${r.passed_count}/${r.alive_count}</td>
+      <td style="padding:8px 12px">
+        <div style="display:flex;flex-wrap:wrap;gap:3px">${dots}</div>
+      </td>`;
+    // Insert sorted by score desc
+    let inserted = false;
+    for (const row of tbody.rows) {
+      const rowScore = parseInt(row.dataset.score || '0');
+      if (r.score > rowScore) { tbody.insertBefore(tr, row); inserted = true; break; }
+    }
+    if (!inserted) tbody.appendChild(tr);
+    tr.dataset.score = r.score;
+  }
+
+  if (msg.type === 'done') {
+    document.getElementById('status-line').textContent = `Done — ${completed} nodes tested`;
+    document.getElementById('stop-btn').style.display = 'none';
+    document.getElementById('progress-bar').style.width = '100%';
+    document.getElementById('live-card').style.display = 'none';
+    es.close();
+  }
+  if (msg.type === 'error') {
+    document.getElementById('status-line').textContent = 'Error: ' + msg.message;
+    es.close();
+  }
+};
+es.onerror = () => { document.getElementById('status-line').textContent = 'Connection lost.'; };
+</script>
+{% endblock %}
