@@ -8,7 +8,7 @@
     <div class="empty-icon">🔌</div>
     <h3>Mihomo not configured</h3>
     <p>Connect to your Mihomo instance to start testing proxy nodes.</p>
-    <a href="/settings" class="btn btn-primary mt16">Configure Mihomo</a>
+    <a href="settings" class="btn btn-primary mt16">Configure Mihomo</a>
   </div>
 
 {% else %}
@@ -42,7 +42,7 @@
           {{ '⊘ Direct ON' if is_direct else '⊘ Direct' }}
         </button>
         {% endif %}
-        <form method="GET" action="/" style="margin:0">
+        <form method="GET" action="./" style="margin:0">
           <button type="submit" class="btn btn-ghost" style="padding:6px 10px;font-size:12px" title="Refresh">↻ Refresh</button>
         </form>
       </div>
@@ -52,7 +52,7 @@
     <div class="alert alert-err mt12">{{ status.error }}</div>
     {% endif %}
     {% if status and status.ok and not cfg.proxy_group %}
-    <div class="alert alert-warn mt12">No proxy group selected — <a href="/settings">open settings</a> to choose one.</div>
+    <div class="alert alert-warn mt12">No proxy group selected — <a href="settings">open settings</a> to choose one.</div>
     {% endif %}
   </div>
 
@@ -72,7 +72,7 @@
     </div>
     <div id="monitor-banner" style="display:none;padding:8px 20px;background:#fefce8;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e">
       ⚠ Node status changed —
-      <a href="/" style="color:#92400e;font-weight:600;text-decoration:underline">refresh page</a> to update
+      <a href="./" style="color:#92400e;font-weight:600;text-decoration:underline">refresh page</a> to update
     </div>
     <div id="test-progress-bar" style="display:none;background:#eff6ff;border-bottom:1px solid #bfdbfe;color:#1e40af">
       {# collapsed row #}
@@ -267,42 +267,42 @@
       <div class="card-title">Module 1 — Quick Test</div>
       <p>Latency &amp; stability across all active nodes. Non-disruptive.</p>
       <div class="test-meta"><span>⏱ ~1 min / node</span><span>✅ Non-disruptive</span></div>
-      <div>{% if can_run %}<a href="/run/quick" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+      <div>{% if can_run %}<a href="run/quick" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
     </div>
 
     <div class="card test-card">
       <div class="card-title">Module 2 — Speed Test</div>
       <p>Download speed via Cloudflare (5 MB × 2, best of two). Switches proxy per node.</p>
       <div class="test-meta"><span>⏱ ~30 s / node</span><span>⚠ Disruptive</span></div>
-      <div>{% if can_run %}<a href="/run/speed" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+      <div>{% if can_run %}<a href="run/speed" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
     </div>
 
     <div class="card test-card">
       <div class="card-title">Module 3 — WebSocket Test</div>
       <p>RTT ping-pong (×10), stability &amp; throughput (50 KB). Runs twice, takes best.</p>
       <div class="test-meta"><span>⏱ ~30 s / node</span><span>⚠ Disruptive</span></div>
-      <div>{% if can_run %}<a href="/run/ws" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+      <div>{% if can_run %}<a href="run/ws" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
     </div>
 
     <div class="card test-card">
       <div class="card-title">Module 4 — Browser Test</div>
       <p>BBC + TMDB pages (TTFB, media load) + Telegram CDN images. Runs twice, takes best.</p>
       <div class="test-meta"><span>⏱ ~20 s / node</span><span>⚠ Disruptive</span></div>
-      <div>{% if can_run %}<a href="/run/browser" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+      <div>{% if can_run %}<a href="run/browser" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
     </div>
 
     <div class="card test-card">
       <div class="card-title">Module 5 — Video Test</div>
       <p>Playwright: DASH-IF streaming + Telegram video embeds. 2 runs, takes best. Shared persistent browser.</p>
       <div class="test-meta"><span>⏱ ~1 min / node</span><span>⚠ Disruptive</span></div>
-      <div>{% if can_run %}<a href="/run/video" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+      <div>{% if can_run %}<a href="run/video" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
     </div>
 
     <div class="card test-card">
       <div class="card-title">Module 6 — DPI Bypass Test</div>
       <p>TCP 16-20 detection: HEAD + 64 KB POST to 36 hosts across 18 providers. Timeout = DPI blocked. Scores 0-10 by pass rate.</p>
       <div class="test-meta"><span>⏱ ~30 s / node</span><span>⚠ Disruptive</span></div>
-      <div>{% if can_run %}<a href="/run/dpi" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
+      <div>{% if can_run %}<a href="run/dpi" class="btn btn-primary">▶ Run</a>{% else %}<button class="btn btn-primary" disabled>▶ Run</button>{% endif %}</div>
     </div>
   </div>
 
@@ -310,7 +310,7 @@
     <div class="card-title" style="color:var(--p)">Deep Test — All Modules Combined</div>
     <p>Runs Quick → Speed → WS → Browser → Video → DPI per node. Browser score = httpx 60% + Playwright 40%. Deep = Quick 30% + DPI 25% + Browser 20% + Speed 15% + WS 10%.</p>
     <div class="test-meta"><span>⏱ ~4 min / node</span><span>⚠ Disruptive</span></div>
-    <div>{% if can_run %}<a href="/run/deep" class="btn btn-primary">▶ Run Deep Test</a>{% else %}<button class="btn btn-primary" disabled>▶ Run Deep Test</button>{% endif %}</div>
+    <div>{% if can_run %}<a href="run/deep" class="btn btn-primary">▶ Run Deep Test</a>{% else %}<button class="btn btn-primary" disabled>▶ Run Deep Test</button>{% endif %}</div>
   </div>
 
 {% endif %}

@@ -1,8 +1,10 @@
+{% set _ing = request.headers.get('x-ingress-path', '') %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <base href="{{ _ing }}/">
   <title>{% block title %}Node Tester{% endblock %}</title>
   <style>
     :root {
@@ -124,14 +126,30 @@
     .spin-dark { border-color: rgba(0,0,0,.1); border-top-color: var(--p); }
     @keyframes _s { to { transform: rotate(360deg); } }
   </style>
+  <script>
+  (function(){
+    var ing = {{ _ing | tojson }};
+    if (!ing) return;
+    var _f = window.fetch;
+    window.fetch = function(url){
+      if (typeof url === 'string' && url[0] === '/') url = ing + url;
+      return _f.apply(this, arguments);
+    };
+    var _E = window.EventSource;
+    window.EventSource = function(url, opts){
+      if (typeof url === 'string' && url[0] === '/') url = ing + url;
+      return new _E(url, opts);
+    };
+  })();
+  </script>
 </head>
 <body>
 <header>
-  <a class="logo" href="/">Node<span>Tester</span></a>
+  <a class="logo" href="./">Node<span>Tester</span></a>
   <nav>
-    <a href="/" class="{{ 'active' if page == 'dashboard' else '' }}">Dashboard</a>
-    <a href="/charts" class="{{ 'active' if page == 'charts' else '' }}">Charts</a>
-    <a href="/settings" class="{{ 'active' if page == 'settings' else '' }}">Settings</a>
+    <a href="./" class="{{ 'active' if page == 'dashboard' else '' }}">Dashboard</a>
+    <a href="charts" class="{{ 'active' if page == 'charts' else '' }}">Charts</a>
+    <a href="settings" class="{{ 'active' if page == 'settings' else '' }}">Settings</a>
   </nav>
 </header>
 <main>

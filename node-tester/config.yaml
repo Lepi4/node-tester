@@ -1,5 +1,5 @@
 name: "Node Tester"
-version: "1.0.0"
+version: "1.0.1"
 slug: "node_tester"
 description: "Proxy node performance testing via Mihomo/Clash — Quick, Speed, WS, Browser, Video, DPI"
 url: "https://github.com/lepi4/node-tester"
@@ -11,6 +11,11 @@ arch:
 startup: application
 boot: auto
 init: false
+
+ingress: true
+ingress_port: 8080
+panel_icon: mdi:server-network
+panel_title: "Node Tester"
 
 ports:
   8080/tcp: 8080
