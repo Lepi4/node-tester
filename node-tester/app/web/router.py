@@ -57,6 +57,12 @@ def _tg_proxy_url(cfg: dict) -> str | None:
         return f"http://{user}:{pw}@{host}:{port}"
     return f"http://{host}:{port}"
 
+def _redir(request: Request, path: str, status_code: int = 303) -> RedirectResponse:
+    """Redirect that preserves HA ingress path prefix."""
+    ing = request.headers.get("x-ingress-path", "")
+    return RedirectResponse(f"{ing}{path}", status_code=status_code)
+
+
 # Глобальный реестр stop-событий и abort-коллбэков по типу теста
 _stop_events: dict[str, asyncio.Event] = {}
 _abort_callbacks: dict[str, callable] = {}
@@ -446,7 +452,7 @@ async def settings_save(
     from app.main import apply_log_level
     apply_log_level(level)
     log.info("log_level changed to %s", level)
-    return RedirectResponse("/settings?saved=1", status_code=303)
+    return _redir(request, "/settings?saved=1")
 
 
 @router.post("/api/mqtt/resync")
@@ -492,7 +498,7 @@ async def test_connection(
 async def run_quick_page(request: Request):
     cfg = config.load()
     if not config.is_configured() or not cfg.get("proxy_group"):
-        return RedirectResponse("/settings")
+        return _redir(request, "/settings")
     return templates.TemplateResponse("run.html", {
         "request": request,
         "cfg":     cfg,
@@ -619,7 +625,7 @@ async def run_quick_stream(request: Request):
 async def run_speed_page(request: Request):
     cfg = config.load()
     if not config.is_configured() or not cfg.get("proxy_group"):
-        return RedirectResponse("/settings")
+        return _redir(request, "/settings")
     return templates.TemplateResponse("run_speed.html", {
         "request": request,
         "cfg":     cfg,
@@ -751,7 +757,7 @@ async def run_speed_stream(request: Request):
 async def run_browser_page(request: Request):
     cfg = config.load()
     if not config.is_configured() or not cfg.get("proxy_group"):
-        return RedirectResponse("/settings")
+        return _redir(request, "/settings")
     return templates.TemplateResponse("run_browser.html", {
         "request": request, "cfg": cfg, "page": "run",
     })
@@ -892,7 +898,7 @@ async def run_browser_stream(request: Request):
 async def run_deep_page(request: Request):
     cfg = config.load()
     if not config.is_configured() or not cfg.get("proxy_group"):
-        return RedirectResponse("/settings")
+        return _redir(request, "/settings")
     return templates.TemplateResponse("run_deep.html", {
         "request": request, "cfg": cfg, "page": "run",
     })
@@ -1146,7 +1152,7 @@ async def run_deep_stream(request: Request):
 async def run_ws_page(request: Request):
     cfg = config.load()
     if not config.is_configured() or not cfg.get("proxy_group"):
-        return RedirectResponse("/settings")
+        return _redir(request, "/settings")
     return templates.TemplateResponse("run_ws.html", {
         "request": request,
         "cfg":     cfg,
@@ -1278,7 +1284,7 @@ async def run_ws_stream(request: Request):
 async def run_dpi_page(request: Request):
     cfg = config.load()
     if not config.is_configured() or not cfg.get("proxy_group"):
-        return RedirectResponse("/settings")
+        return _redir(request, "/settings")
     return templates.TemplateResponse("run_dpi.html", {
         "request": request, "cfg": cfg, "page": "run",
     })
@@ -1408,7 +1414,7 @@ async def run_dpi_stream(request: Request):
 async def run_video_page(request: Request):
     cfg = config.load()
     if not config.is_configured() or not cfg.get("proxy_group"):
-        return RedirectResponse("/settings")
+        return _redir(request, "/settings")
     return templates.TemplateResponse("run_video.html", {
         "request": request, "cfg": cfg, "page": "run",
     })
