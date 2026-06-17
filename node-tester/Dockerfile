@@ -1,9 +1,7 @@
-ARG BUILD_FROM=python:3.12-slim
-FROM $BUILD_FROM
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copy requirements first for layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -19,10 +17,8 @@ RUN for pkg in ttf-ubuntu-font-family ttf-unifont; do \
 
 RUN playwright install --with-deps chromium
 
-# Copy application
 COPY app/ ./app/
 
-# /data is mounted by Home Assistant as persistent storage
 ENV DATA_DIR=/data
 
 COPY run.sh /run.sh
