@@ -17,6 +17,7 @@ ingress_port: 8080
 panel_icon: mdi:server-network
 panel_title: "Node Tester"
 
+host_network: true
 ports:
   8080/tcp: 8080
 ports_description:
