@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.4
+
+- Fix: after Stop, MQTT/scheduler could not restart test ("already running" stuck)
+  Root cause: stream loop didn't detect finalize_task.done() when stop was pressed,
+  so _running flag was never cleared
+
 ## 1.0.2
 
 - Fix 404 after saving settings when running via HA ingress

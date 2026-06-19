@@ -595,6 +595,8 @@ async def run_quick_stream(request: Request):
                 except asyncio.TimeoutError:
                     if await request.is_disconnected():
                         return  # test continues in background via finalize_task
+                    if finalize_task.done():
+                        break   # stop was pressed — finalize finished, exit loop
                     continue
 
                 if await request.is_disconnected():
@@ -1125,6 +1127,8 @@ async def run_deep_stream(request: Request):
                 except asyncio.TimeoutError:
                     if await request.is_disconnected():
                         return  # test continues in background via finalize_task
+                    if finalize_task.done():
+                        break   # stop was pressed — finalize finished, exit loop
                     continue
                 if await request.is_disconnected():
                     return  # test continues in background
