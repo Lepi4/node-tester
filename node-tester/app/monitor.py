@@ -80,21 +80,24 @@ async def poll_once() -> None:
         import app.mqtt as mqtt
         asyncio.create_task(mqtt.publish_state(confirmed_active, confirmed_dead, uncertain))
 
-        want_direct  = cfg.get("auto_direct_fallback", True)
-        want_switch  = cfg.get("auto_switch_dead", True)
-        if not want_direct and not want_switch:
-            return
-
+        # Always track and publish the real active leaf node so MQTT stays in sync
+        # even when the user switches nodes directly in the Mihomo UI.
         try:
             current = await mihomo.get_active_leaf_node(
                 cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["proxy_group"]
             )
         except Exception:
-            return
-        if not current:
+            current = None
+        if current and current != _cache.get("current_node"):
+            _cache["current_node"] = current
+            asyncio.create_task(mqtt.publish_active_node(current))
+            log.debug("[monitor] active node updated → %s", current)
+
+        want_direct  = cfg.get("auto_direct_fallback", True)
+        want_switch  = cfg.get("auto_switch_dead", True)
+        if not want_direct and not want_switch or not current:
             return
 
-        import app.mqtt as mqtt
         now_str = datetime.utcnow().isoformat(timespec="seconds")
 
         # ── DIRECT fallback ────────────────────────────────────────────────────

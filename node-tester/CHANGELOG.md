@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.5
+
+- Fix: active node MQTT sensor now updates on every monitor poll, not only on auto-switch
+  Previously, if user changed node directly in Mihomo UI, MQTT showed stale value forever
+  Now: get_active_leaf_node() called every poll, publishes only when value changes
+
 ## 1.0.4
 
 - Fix: after Stop, MQTT/scheduler could not restart test ("already running" stuck)
