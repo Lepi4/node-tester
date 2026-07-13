@@ -1,5 +1,5 @@
 name: "Node Tester"
-version: "1.0.5"
+version: "1.0.6"
 slug: "node_tester"
 description: "Proxy node performance testing via Mihomo/Clash — Quick, Speed, WS, Browser, Video, DPI"
 url: "https://github.com/lepi4/node-tester"

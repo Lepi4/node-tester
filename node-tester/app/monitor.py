@@ -143,6 +143,23 @@ async def poll_once() -> None:
         if current in set(confirmed_active):
             return  # node is alive — auto best-node selection is done in apply_best_node
 
+        # Current node isn't confirmed alive. If it only missed a single
+        # passive beat (classified "uncertain", not "confirmed_dead"), do an
+        # active ping double-check before switching away — a lone dropped
+        # packet on the periodic URLTest otherwise causes a false-positive
+        # switch even though the node is still perfectly reachable.
+        if current in uncertain:
+            try:
+                ping_active, _, _ = await mihomo.ping_filter_nodes(
+                    cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], [current]
+                )
+            except Exception as e:
+                ping_active = []
+                log.debug("[monitor] ping re-check failed for %s: %s", current, e)
+            if current in ping_active:
+                log.info("[monitor] %s uncertain but ping confirms alive, skipping switch", current)
+                return
+
         # Current node is dead → switch to top alive node
         best = _best_node(confirmed_active, cfg, "any")
         if not best or best == current:

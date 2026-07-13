@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.6
+
+- Fix: dead-node auto-switch could fire on a single dropped passive health-check
+  Previously, a node classified "uncertain" (not confirmed dead, just missing fresh
+  URLTest data) was treated the same as confirmed dead, causing a false-positive
+  switch away from a node that was actually still alive
+  Now: before switching, do an active ping_filter_nodes() double-check on the
+  current node; skip the switch if the ping confirms it's still reachable
+
 ## 1.0.5
 
 - Fix: active node MQTT sensor now updates on every monitor poll, not only on auto-switch
