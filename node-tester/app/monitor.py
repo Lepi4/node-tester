@@ -21,11 +21,35 @@ _cache: dict = {
     "updated_at":  None,
     "error":       None,
     "last_switch": None,  # {"from": str, "to": str, "reason": str, "at": str}
+    # Ladder state: "ladder_expected_node" is what the poll loop itself last
+    # set the active node to; if the REAL active node ever differs from this
+    # on the next poll, something else (Mihomo's own UI, or a manual switch
+    # through node-tester) changed it -- that pauses the "climb to something
+    # better" behaviour (manual_override=True) until either the node dies
+    # (rescue always stays active) or a new manual/automatic switch happens.
+    "ladder_expected_node": None,
+    "manual_override":      False,
 }
 
 
 def get_cache() -> dict:
     return _cache
+
+
+def mark_manual_override(node: str) -> None:
+    """Call this from anywhere a node is switched by explicit user action
+    (Settings manual switch, MQTT select/node/set, forcing Direct/Reserve ON)
+    -- makes the pause take effect immediately instead of waiting for the
+    poll loop to notice."""
+    _cache["ladder_expected_node"] = node
+    _cache["manual_override"] = True
+
+
+def resume_auto(node: str) -> None:
+    """Call this when explicitly returning to automatic selection (Direct/
+    Reserve switched OFF) -- syncs the tracker and lifts the pause."""
+    _cache["ladder_expected_node"] = node
+    _cache["manual_override"] = False
 
 
 def _node_grade(node: str, results: dict) -> str | None:
@@ -134,6 +158,7 @@ async def poll_once() -> None:
             log.debug("[monitor] active node updated → %s", current)
 
         want_direct  = cfg.get("auto_direct_fallback", True)
+        want_reserve = cfg.get("auto_reserve_fallback", True)
         want_switch  = cfg.get("auto_switch_dead", True)
         if not want_direct and not want_switch or not current:
             return
@@ -167,27 +192,46 @@ async def poll_once() -> None:
                 effectively_alive.add(current)
                 log.debug("[monitor] %s uncertain but ping confirms alive", current)
 
+        # Detect a change we didn't make ourselves (Mihomo's own UI, or a
+        # manual switch through node-tester) since the last poll -- pauses
+        # the "climb to something better" behaviour. Rescue-from-dead below
+        # always stays active regardless of this pause.
+        expected = _cache.get("ladder_expected_node")
+        override = bool(_cache.get("manual_override", False))
+        if expected is not None and current != expected:
+            if not override:
+                log.info("[monitor] external change detected (%s -> %s) -- pausing ladder climb", expected, current)
+            override = True
+            _cache["manual_override"] = True
+        _cache["ladder_expected_node"] = current
+
+        # DIRECT is never a real leaf in the proxy group's node list, so it can
+        # never appear in effectively_alive -- treat it as "alive" here too, or
+        # a manually-forced DIRECT (bypass proxy on purpose) would get instantly
+        # rescued away from on the very next poll.
+        current_is_alive = current in effectively_alive or current == "DIRECT"
         best_main = _best_node(list(effectively_alive), cfg, "any")
 
-        # Already sitting on the actual top-ranked eligible main node —
-        # nothing to do. Ordinary main<->main reshuffling otherwise stays
-        # test-driven via apply_best_node, not this poll loop. This is the
-        # "ladder" exit condition: while current != best_main we keep
-        # climbing every poll, whether current is DIRECT, reserve, or just a
-        # lower-ranked (but alive) main node.
-        if best_main and current == best_main:
-            return
-
-        if best_main:
+        if current_is_alive:
+            if override:
+                return  # respect the manual pick as long as it keeps working
+            if not best_main or current == best_main:
+                return  # already at the top, or nothing eligible to climb to
             target, reason = best_main, "climb_to_best_main"
         else:
-            reserve = _best_reserve_node(list(effectively_alive), cfg)
-            if reserve:
-                target, reason = reserve, "reserve"
-            elif want_direct:
-                target, reason = "DIRECT", "all_main_dead"
+            # Current is genuinely dead -- rescue always applies and clears
+            # any prior manual pause (the manual pick is gone either way).
+            if best_main:
+                target, reason = best_main, "climb_to_best_main"
             else:
-                return  # nothing eligible and DIRECT fallback disabled — stay put
+                reserve = _best_reserve_node(list(effectively_alive), cfg) if want_reserve else None
+                if reserve:
+                    target, reason = reserve, "reserve"
+                elif want_direct:
+                    target, reason = "DIRECT", "all_main_dead"
+                else:
+                    return  # nothing eligible and DIRECT fallback disabled — stay put
+            _cache["manual_override"] = False
 
         if target == current:
             return
@@ -196,6 +240,7 @@ async def poll_once() -> None:
             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
             cfg["proxy_group"], target,
         )
+        _cache["ladder_expected_node"] = target
         _cache["last_switch"] = {
             "from": current, "to": target,
             "reason": reason,
@@ -265,6 +310,11 @@ async def apply_best_node(after_test: str, tested_nodes: list[str] | None = None
             "reason": f"after_{after_test}",
             "at": datetime.utcnow().isoformat(timespec="seconds"),
         }
+        # Running a test and auto-applying its result is itself an explicit,
+        # intentional action -- treat it the same as an automatic ladder
+        # switch: sync the tracker and resume normal poll-loop behaviour.
+        _cache["ladder_expected_node"] = best
+        _cache["manual_override"] = False
         log.info("[monitor] after-%s: %s → %s (from %d candidates)",
                  after_test, current, best, len(candidates))
         import app.mqtt as mqtt
@@ -273,21 +323,34 @@ async def apply_best_node(after_test: str, tested_nodes: list[str] | None = None
         log.warning("[monitor] apply_best_node failed: %s", e)
 
 
+_FAST_RETRY_SEC = 20  # on a failed poll, retry soon instead of waiting the full interval
+
+
 async def run_monitor() -> None:
-    """Loops forever; interval is re-read from config on every tick."""
+    """Loops forever; interval is re-read from config on every tick.
+
+    A failed poll (e.g. Mihomo's API being briefly unreachable — OpenClash
+    often restarts its core right when the WAN changes, which is exactly the
+    moment we most need to react) retries quickly instead of waiting the full
+    configured interval. Waiting up to monitor_interval_min (default 5 min)
+    after one unlucky failed poll meant the recovery ladder could sit idle
+    for minutes with no visibility into whether a switch was even needed."""
     await asyncio.sleep(5)
     while True:
         cfg = config.load()
         interval = int(cfg.get("monitor_interval_min", 5))
         if interval > 0:
+            ok = True
             try:
                 await asyncio.wait_for(poll_once(), timeout=_POLL_TIMEOUT_SEC)
             except asyncio.TimeoutError:
+                ok = False
                 _cache["error"] = f"poll timed out after {_POLL_TIMEOUT_SEC}s"
                 log.warning("[monitor] poll_once timed out after %ds", _POLL_TIMEOUT_SEC)
             except Exception as e:
-                _cache["error"] = str(e)
-                log.warning("[monitor] unexpected error in run_monitor: %s", e)
-            await asyncio.sleep(interval * 60)
+                ok = False
+                _cache["error"] = str(e) or repr(e)
+                log.warning("[monitor] unexpected error in run_monitor: %s", repr(e))
+            await asyncio.sleep(interval * 60 if ok else _FAST_RETRY_SEC)
         else:
             await asyncio.sleep(60)

@@ -300,6 +300,7 @@ async def _handle_command(cfg: dict, topic: str, payload: str) -> None:
             if payload.upper() == "ON":
                 await _mih.set_proxy(host, port, secret, group, "DIRECT")
                 await publish_active_node("DIRECT")
+                _monitor.mark_manual_override("DIRECT")
                 log.info("[mqtt] cmd → DIRECT ON")
             else:
                 # Switch back to best alive node
@@ -311,6 +312,7 @@ async def _handle_command(cfg: dict, topic: str, payload: str) -> None:
                     if best:
                         await _mih.set_proxy(host, port, secret, group, best)
                         await publish_active_node(best)
+                        _monitor.resume_auto(best)
                         log.info("[mqtt] cmd → DIRECT OFF, switched to %s", best)
 
         elif rel == "switch/reserve/set":
@@ -322,6 +324,7 @@ async def _handle_command(cfg: dict, topic: str, payload: str) -> None:
                 if reserve:
                     await _mih.set_proxy(host, port, secret, group, reserve)
                     await publish_active_node(reserve)
+                    _monitor.mark_manual_override(reserve)
                     log.info("[mqtt] cmd → Reserve ON, switched to %s", reserve)
                 else:
                     log.warning("[mqtt] cmd → Reserve ON but no alive node is tagged 'reserve'")
@@ -339,6 +342,7 @@ async def _handle_command(cfg: dict, topic: str, payload: str) -> None:
                     if best:
                         await _mih.set_proxy(host, port, secret, group, best)
                         await publish_active_node(best)
+                        _monitor.resume_auto(best)
                         log.info("[mqtt] cmd → Reserve OFF, switched to %s", best)
 
         elif rel == "select/node/set":
@@ -346,6 +350,7 @@ async def _handle_command(cfg: dict, topic: str, payload: str) -> None:
             if node:
                 await _mih.set_proxy(host, port, secret, group, node)
                 await publish_active_node(node)
+                _monitor.mark_manual_override(node)
                 log.info("[mqtt] cmd → node select: %s", node)
 
         elif rel == "select/auto/set":

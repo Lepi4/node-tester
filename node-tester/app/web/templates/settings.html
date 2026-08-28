@@ -202,13 +202,25 @@
         </label>
 
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:14px">
+          <input type="checkbox" name="auto_reserve_fallback" value="on"
+                 {% if cfg.auto_reserve_fallback %}checked{% endif %}
+                 style="width:15px;height:15px;cursor:pointer">
+          <span>
+            <strong>Reserve fallback</strong>
+            <span style="display:block;color:var(--m);font-size:12px;margin-top:2px">
+              All main nodes dead → try the best "reserve"-tagged node before DIRECT. Off = skip straight to DIRECT.
+            </span>
+          </span>
+        </label>
+
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:14px">
           <input type="checkbox" name="auto_direct_fallback" value="on"
                  {% if cfg.auto_direct_fallback %}checked{% endif %}
                  style="width:15px;height:15px;cursor:pointer">
           <span>
             <strong>DIRECT fallback</strong>
             <span style="display:block;color:var(--m);font-size:12px;margin-top:2px">
-              All nodes dead → switch to DIRECT; at least one node recovers → switch to best
+              All nodes (and reserve) dead → switch to DIRECT; at least one node recovers → switch to best
             </span>
           </span>
         </label>

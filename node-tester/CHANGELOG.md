@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.1
+
+- Fix: recovery ladder no longer fights manual node switches. Switching the
+  active node manually — via Mihomo's own UI, node-tester's Settings, MQTT
+  select/node, or forcing Direct/Reserve ON — now pauses the ladder's
+  "climb to best" behaviour instead of reverting the pick on the very next
+  poll. Rescue-if-the-current-node-actually-dies always stays active
+  regardless of the pause. Returning to automatic selection (Direct/Reserve
+  switched OFF, or a new test-driven switch) resumes normal ladder behaviour
+- Feature: Reserve fallback is now independently toggleable (Settings →
+  "Reserve fallback"), alongside the existing DIRECT fallback toggle. Off =
+  skip the reserve step entirely and fall straight to DIRECT when all Main
+  nodes are dead/ineligible. Manual switching to Reserve via MQTT/Settings
+  still works regardless of this toggle — it only gates the automatic
+  fallback cascade
+
 ## 1.1.0
 
 - Feature: three-tier node groups — Main / Backup / Reserve

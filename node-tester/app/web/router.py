@@ -362,6 +362,7 @@ async def settings_save(
     auto_node_mode:         str = Form("off"),
     auto_switch_dead:       str = Form("off"),
     auto_direct_fallback:   str = Form("off"),
+    auto_reserve_fallback:  str = Form("off"),
     manual_node:            str = Form(""),
     ng_node:                List[str] = Form([]),
     ng_group:               List[str] = Form([]),
@@ -417,6 +418,7 @@ async def settings_save(
         "auto_node_mode":       mode,
         "auto_switch_dead":     auto_switch_dead == "on",
         "auto_direct_fallback": auto_direct_fallback == "on",
+        "auto_reserve_fallback": auto_reserve_fallback == "on",
         "mqtt_enabled":              mqtt_enabled == "on",
         "mqtt_host":                 mqtt_host.strip(),
         "mqtt_port":                 max(1, min(65535, mqtt_port)),
@@ -448,10 +450,14 @@ async def settings_save(
         cfg2 = config.load()
         if cfg2.get("proxy_group") and config.is_configured():
             try:
+                node = manual_node.strip()
                 await mihomo.set_proxy(
                     cfg2["mihomo_host"], cfg2["mihomo_port"], cfg2["mihomo_secret"],
-                    cfg2["proxy_group"], manual_node.strip(),
+                    cfg2["proxy_group"], node,
                 )
+                # Pause the recovery ladder's "climb to something better" —
+                # this pick was explicit, keep it as long as it works.
+                monitor.mark_manual_override(node)
             except Exception:
                 pass
     # Применяем уровень логов немедленно

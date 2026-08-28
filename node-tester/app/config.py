@@ -41,6 +41,9 @@ DEFAULTS: dict = {
     "auto_switch_dead": True,
     # Switch to DIRECT when all nodes are dead; switch back when any node recovers
     "auto_direct_fallback": True,
+    # Use a "reserve"-tagged node when all main nodes are dead/ineligible
+    # (tried before falling further to DIRECT). Off = skip straight to DIRECT.
+    "auto_reserve_fallback": True,
     # MQTT
     "mqtt_enabled":       False,
     "mqtt_host":          "",
