@@ -36,17 +36,20 @@ def _top_label(i: int) -> str:
 
 
 def _ranked_nodes(nodes: list[str]) -> list[str]:
-    """Sort nodes best-first: main group before backup, then by max score."""
+    """Sort nodes best-first: main group before reserve before backup
+    (tier always wins over score -- a fast reserve/quarantine node must
+    never outrank a slower main one), then by max score within each tier."""
     import app.store as _store
     if not nodes:
         return []
     results = _store.get_node_results(nodes)
     groups  = config.load().get("node_groups") or {}
+    _TIER = {"main": 2, "reserve": 1, "backup": 0}
     def _score(n: str) -> tuple:
         r  = results.get(n, {})
         q  = r["quick"]["score"] if r.get("quick") else -1
         d  = r["deep"]["score"]  if r.get("deep")  else -1
-        gp = 0 if groups.get(n, "main") != "backup" else -1
+        gp = _TIER.get(groups.get(n, "main"), 2)
         return (gp, max(q, d), q, d)
     return sorted(nodes, key=_score, reverse=True)
 

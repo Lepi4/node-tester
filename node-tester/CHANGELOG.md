@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.2
+
+- Fix: MQTT "top N" sensors (`top/1`..`top/10`) no longer rank a Reserve-tagged
+  node alongside Main nodes by score alone. A fast Reserve node (e.g. a 4G
+  fallback) could previously outrank slower Main nodes and show up at #1,
+  which is misleading -- Reserve is a last-resort tier, not a normal
+  candidate. Ranking is now strictly tiered: Main before Reserve before
+  Backup, score only breaks ties within a tier.
+
 ## 1.1.1
 
 - Fix: recovery ladder no longer fights manual node switches. Switching the
