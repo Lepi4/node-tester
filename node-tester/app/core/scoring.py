@@ -293,3 +293,17 @@ def grade(score: int) -> str:
     if score >= 45: return "C"
     if score >= 30: return "D"
     return "F"
+
+
+GRADE_ORDER = ["F", "D", "C", "B", "A", "S"]  # worst to best
+
+
+def grade_meets(node_grade: str | None, threshold: str) -> bool:
+    """True if node_grade is at or above threshold (e.g. grade_meets('B', 'C') -> True).
+    A missing grade (None / not tested yet) does not meet any threshold."""
+    if not node_grade:
+        return False
+    try:
+        return GRADE_ORDER.index(node_grade[0].upper()) >= GRADE_ORDER.index(threshold[0].upper())
+    except ValueError:
+        return False

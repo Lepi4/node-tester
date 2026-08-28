@@ -6,6 +6,7 @@ from datetime import datetime, timezone as dt_timezone
 import app.config as config
 import app.mihomo as mihomo
 import app.store as store
+from app.core import scoring
 
 log = logging.getLogger("node_tester.monitor")
 
@@ -27,30 +28,69 @@ def get_cache() -> dict:
     return _cache
 
 
+def _node_grade(node: str, results: dict) -> str | None:
+    """Best available grade for a node: deep takes precedence over quick."""
+    r = results.get(node, {})
+    if r.get("deep") and r["deep"].get("grade"):
+        return r["deep"]["grade"]
+    if r.get("quick") and r["quick"].get("grade"):
+        return r["quick"]["grade"]
+    return None
+
+
 def _best_node(nodes: list[str], cfg: dict, mode: str) -> str | None:
-    """Return the best node from `nodes` ranked by `mode` (deep/quick/any).
-    Main group always ranks above backup regardless of score."""
+    """Return the best MAIN-eligible node from `nodes`, ranked by `mode` (deep/quick/any).
+
+    Eligibility: tagged "main" (backup/reserve/excluded never qualify here --
+    backup is quarantine-only, reserve has its own selection path via
+    _best_reserve_node) AND graded at/above min_grade_for_switch (untested
+    nodes with no grade yet are not penalised)."""
     if not nodes:
         return None
-    results = store.get_node_results(nodes)
-    groups  = cfg.get("node_groups") or {}
+    results   = store.get_node_results(nodes)
+    groups    = cfg.get("node_groups") or {}
+    threshold = cfg.get("min_grade_for_switch", "C")
 
-    def _gp(n: str) -> int:
-        """Group priority: 0=main (wins), -1=backup."""
-        return 0 if groups.get(n, "main") != "backup" else -1
+    def _eligible(n: str) -> bool:
+        if groups.get(n, "main") != "main":
+            return False
+        g = _node_grade(n, results)
+        return g is None or scoring.grade_meets(g, threshold)
+
+    candidates = [n for n in nodes if _eligible(n)]
+    if not candidates:
+        return None
 
     def score(n: str) -> tuple:
         r     = results.get(n, {})
         deep  = r["deep"]["score"]  if r.get("deep")  else -1
         quick = r["quick"]["score"] if r.get("quick") else -1
-        gp    = _gp(n)
         if mode == "deep":
-            return (gp, deep, quick)
+            return (deep, quick)
         if mode == "quick":
-            return (gp, quick, deep)
-        return (gp, max(deep, quick), deep, quick)
+            return (quick, deep)
+        return (max(deep, quick), deep, quick)
 
-    return max(nodes, key=score)
+    return max(candidates, key=score)
+
+
+def _best_reserve_node(nodes: list[str], cfg: dict) -> str | None:
+    """Best alive node tagged 'reserve' -- the fallback used only once every
+    main node is dead/ineligible. If several are tagged reserve, rank them
+    the same way as main nodes; if none are alive, caller falls to DIRECT."""
+    groups   = cfg.get("node_groups") or {}
+    reserves = [n for n in nodes if groups.get(n, "main") == "reserve"]
+    if not reserves:
+        return None
+    results = store.get_node_results(reserves)
+
+    def score(n: str) -> tuple:
+        r     = results.get(n, {})
+        deep  = r["deep"]["score"]  if r.get("deep")  else -1
+        quick = r["quick"]["score"] if r.get("quick") else -1
+        return (max(deep, quick), deep, quick)
+
+    return max(reserves, key=score)
 
 
 async def poll_once() -> None:
@@ -100,54 +140,21 @@ async def poll_once() -> None:
 
         now_str = datetime.utcnow().isoformat(timespec="seconds")
 
-        # ── DIRECT fallback ────────────────────────────────────────────────────
-        if want_direct:
-            if not confirmed_active and current != "DIRECT":
-                # All nodes dead → switch to DIRECT
-                await mihomo.set_proxy(
-                    cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                    cfg["proxy_group"], "DIRECT",
-                )
-                _cache["last_switch"] = {
-                    "from": current, "to": "DIRECT",
-                    "reason": "all_nodes_dead",
-                    "at": now_str,
-                }
-                log.info("[monitor] all nodes dead → DIRECT (was %s)", current)
-                asyncio.create_task(mqtt.publish_active_node("DIRECT"))
-                return
-
-            if current == "DIRECT" and confirmed_active:
-                # At least one node recovered → switch to best
-                best = _best_node(confirmed_active, cfg, "any")
-                if best:
-                    await mihomo.set_proxy(
-                        cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                        cfg["proxy_group"], best,
-                    )
-                    _cache["last_switch"] = {
-                        "from": "DIRECT", "to": best,
-                        "reason": "recovered_from_direct",
-                        "at": now_str,
-                    }
-                    log.info("[monitor] recovered from DIRECT → %s", best)
-                    asyncio.create_task(mqtt.publish_active_node(best))
-                return  # nothing more to do after recovery
-
-            if current == "DIRECT":
-                return  # still in DIRECT, still no alive nodes — keep waiting
-
-        # ── Dead-node protection ───────────────────────────────────────────────
-        if not want_switch or not confirmed_active:
+        # ── Unified recovery ladder ─────────────────────────────────────────────
+        # want_switch is now the master gate: if off, this function never
+        # proactively moves traffic (matches its old role for dead-node
+        # protection; DIRECT-fallback used to be gated independently by
+        # want_direct alone, but the two concerns are one cascade now).
+        if not want_switch:
             return
-        if current in set(confirmed_active):
-            return  # node is alive — auto best-node selection is done in apply_best_node
 
-        # Current node isn't confirmed alive. If it only missed a single
-        # passive beat (classified "uncertain", not "confirmed_dead"), do an
-        # active ping double-check before switching away — a lone dropped
-        # packet on the periodic URLTest otherwise causes a false-positive
-        # switch even though the node is still perfectly reachable.
+        groups = cfg.get("node_groups") or {}
+
+        # If current only missed a single passive URLTest beat (classified
+        # "uncertain", not confirmed dead), do one active ping double-check
+        # before treating it as not-best — a lone dropped packet shouldn't
+        # cause a switch away from an otherwise perfectly reachable node.
+        effectively_alive = set(confirmed_active)
         if current in uncertain:
             try:
                 ping_active, _, _ = await mihomo.ping_filter_nodes(
@@ -157,25 +164,45 @@ async def poll_once() -> None:
                 ping_active = []
                 log.debug("[monitor] ping re-check failed for %s: %s", current, e)
             if current in ping_active:
-                log.info("[monitor] %s uncertain but ping confirms alive, skipping switch", current)
-                return
+                effectively_alive.add(current)
+                log.debug("[monitor] %s uncertain but ping confirms alive", current)
 
-        # Current node is dead → switch to top alive node
-        best = _best_node(confirmed_active, cfg, "any")
-        if not best or best == current:
+        best_main = _best_node(list(effectively_alive), cfg, "any")
+
+        # Already sitting on the actual top-ranked eligible main node —
+        # nothing to do. Ordinary main<->main reshuffling otherwise stays
+        # test-driven via apply_best_node, not this poll loop. This is the
+        # "ladder" exit condition: while current != best_main we keep
+        # climbing every poll, whether current is DIRECT, reserve, or just a
+        # lower-ranked (but alive) main node.
+        if best_main and current == best_main:
+            return
+
+        if best_main:
+            target, reason = best_main, "climb_to_best_main"
+        else:
+            reserve = _best_reserve_node(list(effectively_alive), cfg)
+            if reserve:
+                target, reason = reserve, "reserve"
+            elif want_direct:
+                target, reason = "DIRECT", "all_main_dead"
+            else:
+                return  # nothing eligible and DIRECT fallback disabled — stay put
+
+        if target == current:
             return
 
         await mihomo.set_proxy(
             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-            cfg["proxy_group"], best,
+            cfg["proxy_group"], target,
         )
         _cache["last_switch"] = {
-            "from": current, "to": best,
-            "reason": "dead",
+            "from": current, "to": target,
+            "reason": reason,
             "at": now_str,
         }
-        log.info("[monitor] dead-node switch: %s → %s", current, best)
-        asyncio.create_task(mqtt.publish_active_node(best))
+        log.info("[monitor] %s: %s -> %s", reason, current, target)
+        asyncio.create_task(mqtt.publish_active_node(target))
 
     except Exception as e:
         _cache["error"] = str(e)

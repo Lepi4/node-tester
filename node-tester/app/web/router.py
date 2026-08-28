@@ -227,17 +227,20 @@ async def index(request: Request):
         r           = node_results.get(name, {})
         deep_score  = r["computed_deep"]["score"] if r.get("computed_deep") else -1
         quick_score = r["quick"]["score"]         if r.get("quick")         else -1
-        # Main group ranks above backup; within group — best score first
-        gp = 0 if node_groups.get(name, "main") != "backup" else -1
-        return (gp, -deep_score, -quick_score, name.lower())
+        return (-deep_score, -quick_score, name.lower())
 
     excl_set   = {n for n, g in node_groups.items() if g == "excluded"}
     testable   = [n for n in all_nodes if n not in excl_set]
-    alive_main = sorted([n for n in testable if n in alive_set     and node_groups.get(n, "main") != "backup"], key=sort_key)
-    alive_back = sorted([n for n in testable if n in alive_set     and node_groups.get(n, "main") == "backup"], key=sort_key)
-    dead_main  = sorted([n for n in testable if n not in alive_set and node_groups.get(n, "main") != "backup"])
-    dead_back  = sorted([n for n in testable if n not in alive_set and node_groups.get(n, "main") == "backup"])
-    dead_nodes = dead_main + dead_back
+    is_main    = lambda n: node_groups.get(n, "main") == "main"
+    is_backup  = lambda n: node_groups.get(n, "main") == "backup"
+    is_reserve = lambda n: node_groups.get(n, "main") == "reserve"
+    alive_main    = sorted([n for n in testable if n in alive_set     and is_main(n)],    key=sort_key)
+    alive_back    = sorted([n for n in testable if n in alive_set     and is_backup(n)],  key=sort_key)
+    alive_reserve = sorted([n for n in testable if n in alive_set     and is_reserve(n)], key=sort_key)
+    dead_main     = sorted([n for n in testable if n not in alive_set and is_main(n)])
+    dead_back     = sorted([n for n in testable if n not in alive_set and is_backup(n)])
+    dead_reserve  = sorted([n for n in testable if n not in alive_set and is_reserve(n)])
+    dead_nodes = dead_main + dead_back + dead_reserve
     disabled_nodes = sorted([n for n in all_nodes if n in excl_set])
 
     return templates.TemplateResponse("index.html", {
@@ -247,6 +250,7 @@ async def index(request: Request):
         "status":         status,
         "alive_nodes":    alive_main,
         "alive_backup":   alive_back,
+        "alive_reserve":  alive_reserve,
         "dead_nodes":     dead_nodes,
         "disabled_nodes": disabled_nodes,
         "alive_set":      alive_set,
@@ -361,6 +365,7 @@ async def settings_save(
     manual_node:            str = Form(""),
     ng_node:                List[str] = Form([]),
     ng_group:               List[str] = Form([]),
+    min_grade_for_switch:   str = Form("C"),
     mqtt_enabled:         str = Form("off"),
     mqtt_host:            str = Form(""),
     mqtt_port:            int = Form(1883),
@@ -422,8 +427,9 @@ async def settings_save(
         "mqtt_top_nodes":            max(1, mqtt_top_nodes),
         "tg_video_channels":         [ch.strip().lstrip("@") for ch in tg_video_channels],
         "tg_image_channels":         [ch.strip().lstrip("@") for ch in tg_image_channels],
-        "node_groups":               {n: (g if g in ("main", "backup", "excluded") else "main")
+        "node_groups":               {n: (g if g in ("main", "backup", "reserve", "excluded") else "main")
                                          for n, g in zip(ng_node, ng_group)},
+        "min_grade_for_switch":      min_grade_for_switch if min_grade_for_switch in ("S", "A", "B", "C", "D", "F") else "C",
         "schedule_quick_enabled":    schedule_quick_enabled == "on",
         "schedule_quick_mode":       _sched_mode(schedule_quick_mode),
         "schedule_quick_interval":   max(1, schedule_quick_interval),

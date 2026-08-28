@@ -76,6 +76,15 @@ async def publish_active_node(node: str) -> None:
         await _queue.put({"topic": f"{prefix}/switch/direct/state", "payload": "OFF", "retain": True})
     else:
         await _queue.put({"topic": f"{prefix}/switch/direct/state", "payload": "ON", "retain": True})
+    # Keep the reserve switch in sync — ON only while actually sitting on the
+    # node(s) tagged "reserve".
+    groups = config.load().get("node_groups") or {}
+    is_reserve = groups.get(node, "main") == "reserve"
+    await _queue.put({
+        "topic": f"{prefix}/switch/reserve/state",
+        "payload": "ON" if is_reserve else "OFF",
+        "retain": True,
+    })
 
 
 async def publish_state(
@@ -174,6 +183,18 @@ async def _publish_ha_discovery(nodes: list[str]) -> None:
         "payload_on":    "ON",
         "payload_off":   "OFF",
         "icon":          "mdi:transit-skip",
+        "device":        device,
+    })
+
+    # ── switch: Reserve node ─────────────────────────────────────────────────
+    await _enq("switch", "mihomo_reserve", {
+        "unique_id":     "mihomo_reserve",
+        "name":          "Reserve node",
+        "state_topic":   f"{prefix}/switch/reserve/state",
+        "command_topic": f"{prefix}/switch/reserve/set",
+        "payload_on":    "ON",
+        "payload_off":   "OFF",
+        "icon":          "mdi:lifebuoy",
         "device":        device,
     })
 
@@ -292,6 +313,34 @@ async def _handle_command(cfg: dict, topic: str, payload: str) -> None:
                         await publish_active_node(best)
                         log.info("[mqtt] cmd → DIRECT OFF, switched to %s", best)
 
+        elif rel == "switch/reserve/set":
+            if payload.upper() == "ON":
+                groups = cfg.get("node_groups") or {}
+                cache = _monitor.get_cache()
+                alive = set(cache.get("alive") or [])
+                reserve = _monitor._best_reserve_node(list(alive), cfg)  # type: ignore[attr-defined]
+                if reserve:
+                    await _mih.set_proxy(host, port, secret, group, reserve)
+                    await publish_active_node(reserve)
+                    log.info("[mqtt] cmd → Reserve ON, switched to %s", reserve)
+                else:
+                    log.warning("[mqtt] cmd → Reserve ON but no alive node is tagged 'reserve'")
+                    # Reflect that the switch didn't actually engage
+                    await _queue.put({
+                        "topic": f"{prefix}/switch/reserve/state", "payload": "OFF", "retain": True,
+                    })
+            else:
+                # Switch back to best alive main node
+                cache = _monitor.get_cache()
+                alive = cache.get("alive") or []
+                if alive:
+                    from app.monitor import _best_node  # type: ignore[attr-defined]
+                    best = _best_node(alive, cfg, "any")
+                    if best:
+                        await _mih.set_proxy(host, port, secret, group, best)
+                        await publish_active_node(best)
+                        log.info("[mqtt] cmd → Reserve OFF, switched to %s", best)
+
         elif rel == "select/node/set":
             node = payload.strip()
             if node:
@@ -405,6 +454,7 @@ async def run_publisher() -> None:
 
                 # Subscribe to command topics
                 await client.subscribe(f"{prefix}/switch/direct/set")
+                await client.subscribe(f"{prefix}/switch/reserve/set")
                 await client.subscribe(f"{prefix}/select/node/set")
                 await client.subscribe(f"{prefix}/select/auto/set")
                 await client.subscribe(f"{prefix}/button/+")

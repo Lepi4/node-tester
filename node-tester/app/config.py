@@ -25,11 +25,16 @@ DEFAULTS: dict = {
     "timezone": "Europe/Moscow",
     # Background monitor: how often to re-read URLTest state from Mihomo (0 = off)
     "monitor_interval_min": 5,
-    # Node groups: node_name → "main" | "backup" | "excluded"
-    # main   — ranked first, preferred in auto-switch
-    # backup — ranked after main, used only when all main nodes dead
+    # Node groups: node_name → "main" | "backup" | "reserve" | "excluded"
+    # main     — the normal table; ranked/auto-switched among themselves
+    # backup   — quarantine: tested and tracked, but NEVER eligible for connection
+    # reserve  — last resort before DIRECT: used only when every main node is
+    #            dead/ineligible; if the reserve is also dead, falls to DIRECT
     # excluded — hidden from all tests and the dashboard table
     "node_groups": {},
+    # A node graded below this is treated as dead for selection purposes (still
+    # tested/tracked, just never chosen) — same effect as being in "backup".
+    "min_grade_for_switch": "C",
     # Auto node selection: off / deep / quick / any
     "auto_node_mode": "off",
     # Switch to any alive node when current node dies (independent of auto_node_mode)

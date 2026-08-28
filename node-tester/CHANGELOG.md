@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.0
+
+- Feature: three-tier node groups — Main / Backup / Reserve
+  Backup is now a true quarantine: tested and tracked, but never eligible for
+  connection under any circumstance (previously it was just ranked below Main,
+  which still allowed it to be picked when nothing else was available)
+  Reserve is new: a designated last-resort node used only once every Main node
+  is dead or ineligible; falls through to DIRECT if the reserve is also dead
+- Feature: minimum grade threshold (Settings → "Minimum grade to stay eligible",
+  default C) — a Main node graded below this is treated as dead for selection
+  purposes even if it's technically reachable, same effect as Backup
+- Feature: continuous recovery ladder — while sitting on anything other than the
+  actual top-ranked eligible Main node (DIRECT, Reserve, or a lower-ranked but
+  alive Main node), every monitor poll now climbs to the best currently-alive
+  candidate instead of waiting for the next scheduled test. Once on the true
+  top node, switching goes back to being test-driven only
+- Feature: MQTT switch "Reserve node" (mirrors the existing "Direct" switch) —
+  ON forces the configured reserve node, OFF returns to best alive Main
+- Dashboard: Reserve nodes now shown as their own section, same as Backup
+
 ## 1.0.6
 
 - Fix: dead-node auto-switch could fire on a single dropped passive health-check

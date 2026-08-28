@@ -210,6 +210,18 @@
         {{ node_row(name, '#60a5fa') }}
         {% endfor %}
         {% endif %}
+
+        {# Reserve alive nodes — last resort before DIRECT #}
+        {% if alive_reserve %}
+        <tr style="border-top:2px dashed var(--b)">
+          <td colspan="9" style="padding:4px 14px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;background:var(--s)">
+            Reserve nodes
+          </td>
+        </tr>
+        {% for name in alive_reserve %}
+        {{ node_row(name, '#f59e0b') }}
+        {% endfor %}
+        {% endif %}
       </tbody>
     </table>
     </div>
@@ -261,7 +273,7 @@
   {% endif %}
 
   {# ── Test modules ── #}
-  {% set can_run = status and status.ok and cfg.proxy_group and (alive_nodes or alive_backup) %}
+  {% set can_run = status and status.ok and cfg.proxy_group and (alive_nodes or alive_backup or alive_reserve) %}
   <div class="g2">
     <div class="card test-card">
       <div class="card-title">Module 1 — Quick Test</div>

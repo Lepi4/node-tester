@@ -260,20 +260,32 @@
   <div class="card">
     <div class="card-title">Node Groups</div>
     <p style="font-size:13px;color:var(--m);margin:0 0 14px">
-      <strong>Main</strong> — ranked first, preferred in auto-switch.<br>
-      <strong>Backup</strong> — used only when all Main nodes are dead; ranked below Main regardless of score.<br>
+      <strong>Main</strong> — the normal table; ranked and auto-switched among themselves.<br>
+      <strong>Backup</strong> — quarantine: tested and tracked, but never eligible for connection.<br>
+      <strong>Reserve</strong> — last resort before DIRECT; used only when every Main node is dead/ineligible.<br>
       <strong>Excluded</strong> — hidden from tests and dashboard.
     </p>
+    <div class="fg" style="margin-bottom:14px">
+      <label>Minimum grade to stay eligible</label>
+      <select name="min_grade_for_switch">
+        {% for g in ["S","A","B","C","D","F"] %}
+        <option value="{{ g }}" {% if cfg.min_grade_for_switch == g %}selected{% endif %}>{{ g }}</option>
+        {% endfor %}
+      </select>
+      <div class="hint">A Main node graded below this is treated as dead for selection purposes (still tested, never chosen) — same effect as Backup.</div>
+    </div>
     <div style="display:flex;flex-direction:column;gap:6px">
       {% for node in proxy_nodes %}
       {% set grp = cfg.node_groups.get(node, 'main') if cfg.node_groups else 'main' %}
-      <div data-node="{{ node }}" style="display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--b);border-radius:6px;background:{{ '#fff8f0' if grp == 'backup' else ('#f8f8f8' if grp == 'excluded' else 'var(--bg)') }}">
+      {% set bg = {'backup': '#fff8f0', 'reserve': '#f0f6ff', 'excluded': '#f8f8f8'}.get(grp, 'var(--bg)') %}
+      <div data-node="{{ node }}" style="display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--b);border-radius:6px;background:{{ bg }}">
         <span style="flex:1;font-size:13px;{{ 'color:var(--m);text-decoration:line-through' if grp == 'excluded' else '' }}">{{ node }}</span>
         <input type="hidden" name="ng_node" value="{{ node }}">
         <select name="ng_group" style="width:110px;font-size:13px;padding:3px 6px"
-                onchange="this.closest('[data-node]').style.background=this.value==='backup'?'#fff8f0':this.value==='excluded'?'#f8f8f8':'var(--bg)';this.closest('[data-node]').querySelector('span').style.textDecoration=this.value==='excluded'?'line-through':''">
+                onchange="var bg={backup:'#fff8f0',reserve:'#f0f6ff',excluded:'#f8f8f8'}[this.value]||'var(--bg)';this.closest('[data-node]').style.background=bg;this.closest('[data-node]').querySelector('span').style.textDecoration=this.value==='excluded'?'line-through':''">
           <option value="main"     {% if grp == 'main'     %}selected{% endif %}>Main</option>
           <option value="backup"   {% if grp == 'backup'   %}selected{% endif %}>Backup</option>
+          <option value="reserve"  {% if grp == 'reserve'  %}selected{% endif %}>Reserve</option>
           <option value="excluded" {% if grp == 'excluded' %}selected{% endif %}>Excluded</option>
         </select>
       </div>
