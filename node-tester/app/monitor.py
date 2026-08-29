@@ -175,12 +175,18 @@ async def poll_once() -> None:
 
         groups = cfg.get("node_groups") or {}
 
-        # If current only missed a single passive URLTest beat (classified
-        # "uncertain", not confirmed dead), do one active ping double-check
-        # before treating it as not-best — a lone dropped packet shouldn't
-        # cause a switch away from an otherwise perfectly reachable node.
+        # Mihomo's alive/history data is passive URLTest history -- but a
+        # manually-selected node in a "select"-type group never gets that
+        # periodic probing the way "urltest"/"fallback" group members do, so
+        # it can easily show alive=False with no recent history and land
+        # straight in confirmed_dead despite being perfectly reachable. Do
+        # one active ping double-check for BOTH "uncertain" and
+        # "confirmed_dead" before concluding current is actually down --
+        # otherwise a manually-pinned-but-never-URLTested node gets
+        # incorrectly "rescued" (and its manual pin cleared) on the very
+        # next poll.
         effectively_alive = set(confirmed_active)
-        if current in uncertain:
+        if current in uncertain or current in confirmed_dead:
             try:
                 ping_active, _, _ = await mihomo.ping_filter_nodes(
                     cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], [current]

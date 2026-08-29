@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.4
+
+- Fix: a manually-pinned node in a "select"-type proxy group (never gets
+  Mihomo's periodic passive URLTest probing the way "urltest"/"fallback"
+  group members do) could show up with `alive=False` and no recent history,
+  landing straight in `confirmed_dead` -- skipping the active ping double-
+  check that only ran for "uncertain" nodes. This incorrectly triggered the
+  "rescue from dead" path (which also clears the manual pin) on the very
+  next poll, ~monitor_interval_min minutes after switching. The ping
+  double-check now also covers `confirmed_dead`, not just `uncertain`.
+
 ## 1.1.3
 
 - Fix: a manual node pin was still getting reverted -- by a completed test,
