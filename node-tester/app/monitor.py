@@ -296,6 +296,17 @@ async def apply_best_node(after_test: str, tested_nodes: list[str] | None = None
     if not current or current == "DIRECT":
         return
 
+    # A manual pin (Settings, MQTT select/node, Mihomo's own UI) pauses the
+    # ladder's automatic climbing -- a completed test applying its result is
+    # just another form of that same "climb to best" behaviour, so it must
+    # respect the same pause as long as the pinned node is still alive.
+    # Rescue-if-actually-dead still applies below (current not in candidates
+    # falls through to the normal best-node switch).
+    if _cache.get("manual_override") and current in candidates:
+        log.info("[monitor] after-%s: %s was manually pinned and is still alive -- "
+                 "skipping auto-switch", after_test, current)
+        return
+
     best = _best_node(candidates, cfg, after_test)
     if not best or best == current:
         return

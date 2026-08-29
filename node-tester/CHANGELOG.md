@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.3
+
+- Fix: a manual node pin was still getting reverted -- by a completed test,
+  not the reactive poll loop. `apply_best_node()` (runs after every Quick/
+  Deep test when `auto_node_mode` is not "off") switched to the best-ranked
+  node and cleared the manual-pause flag unconditionally, regardless of a
+  just-made manual pick. It now respects the same pause as the ladder: a
+  manually-pinned node that's still alive is left alone; a dead one still
+  gets rescued normally.
+
 ## 1.1.2
 
 - Fix: MQTT "top N" sensors (`top/1`..`top/10`) no longer rank a Reserve-tagged
