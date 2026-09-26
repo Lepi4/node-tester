@@ -37,6 +37,14 @@ _saved_state = store.load_monitor_state()
 _cache["ladder_expected_node"] = _saved_state["ladder_expected_node"]
 _cache["manual_override"] = _saved_state["manual_override"]
 
+# Skip climb-to-best on the very first poll after a process start, even in
+# plain auto mode (no manual pin): whatever node was active when the
+# container stopped stays active through the restart. Normal auto-climbing
+# resumes from the second poll onward. Without this, every addon/HA restart
+# reset the ladder to "whatever scores best right now", which felt like the
+# pin/last-used node was being ignored even though nothing was ever pinned.
+_startup_grace = True
+
 
 def get_cache() -> dict:
     return _cache
@@ -232,6 +240,10 @@ async def poll_once() -> None:
         best_main = _best_node(list(effectively_alive), cfg, "any")
 
         if current_is_alive:
+            global _startup_grace
+            if _startup_grace:
+                _startup_grace = False
+                return  # first poll after a process start -- keep whatever was active, don't optimize yet
             if override:
                 return  # respect the manual pick as long as it keeps working
             if not best_main or current == best_main:

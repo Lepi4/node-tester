@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.7
+
+- Fix: even with no manual pin active, every addon/HA restart made the poll
+  loop immediately climb to whatever node scored best at that moment --
+  looking like "last used node" was being ignored even though nothing was
+  ever pinned. The first poll after a process start now just re-establishes
+  the previously-active node as the baseline instead of optimizing right
+  away; normal auto-climbing (if `auto_node_mode` is on) resumes from the
+  second poll onward. Dead-node rescue is unaffected -- it still applies
+  immediately regardless of this grace period.
+
 ## 1.1.6
 
 - Fix: a manually-pinned node (or `manual_override` pause on the ladder-climb
