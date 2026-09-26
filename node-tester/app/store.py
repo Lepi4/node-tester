@@ -22,6 +22,39 @@ def _save(data: dict) -> None:
     _DATA.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+_MONITOR_STATE = Path(os.environ.get("DATA_DIR", "/app/data")) / "monitor_state.json"
+
+
+def load_monitor_state() -> dict:
+    """Restore the ladder/manual-pin state across restarts.
+
+    Without this, a container restart resets manual_override to False,
+    which lets the poll loop immediately climb away from a manually-pinned
+    node to whatever currently scores best -- see poll_once() in monitor.py.
+    """
+    if not _MONITOR_STATE.exists():
+        return {"ladder_expected_node": None, "manual_override": False}
+    try:
+        data = json.loads(_MONITOR_STATE.read_text(encoding="utf-8"))
+        return {
+            "ladder_expected_node": data.get("ladder_expected_node"),
+            "manual_override": bool(data.get("manual_override", False)),
+        }
+    except Exception:
+        return {"ladder_expected_node": None, "manual_override": False}
+
+
+def save_monitor_state(ladder_expected_node: str | None, manual_override: bool) -> None:
+    _MONITOR_STATE.parent.mkdir(parents=True, exist_ok=True)
+    _MONITOR_STATE.write_text(
+        json.dumps(
+            {"ladder_expected_node": ladder_expected_node, "manual_override": manual_override},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 def save_quick(name: str, result: dict) -> None:
     import app.db as db
     data = _load()

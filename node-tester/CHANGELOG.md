@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.6
+
+- Fix: a manually-pinned node (or `manual_override` pause on the ladder-climb
+  behaviour) did not survive a container restart -- `monitor._cache` was
+  in-memory only, so `manual_override` reset to `False` on every restart and
+  the poll loop would immediately climb away from the pinned node to
+  whatever currently scored best. `ladder_expected_node`/`manual_override`
+  are now persisted to `data/monitor_state.json` and restored on startup.
+
 ## 1.1.5
 
 - Add `panel_admin: false` so the ingress sidebar panel is visible to

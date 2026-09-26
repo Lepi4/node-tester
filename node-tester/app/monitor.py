@@ -31,9 +31,19 @@ _cache: dict = {
     "manual_override":      False,
 }
 
+# Restore across restarts -- otherwise manual_override resets to False and the
+# poll loop immediately climbs away from a manually-pinned node (see poll_once()).
+_saved_state = store.load_monitor_state()
+_cache["ladder_expected_node"] = _saved_state["ladder_expected_node"]
+_cache["manual_override"] = _saved_state["manual_override"]
+
 
 def get_cache() -> dict:
     return _cache
+
+
+def _persist_ladder_state() -> None:
+    store.save_monitor_state(_cache.get("ladder_expected_node"), bool(_cache.get("manual_override", False)))
 
 
 def mark_manual_override(node: str) -> None:
@@ -43,6 +53,7 @@ def mark_manual_override(node: str) -> None:
     poll loop to notice."""
     _cache["ladder_expected_node"] = node
     _cache["manual_override"] = True
+    _persist_ladder_state()
 
 
 def resume_auto(node: str) -> None:
@@ -50,6 +61,7 @@ def resume_auto(node: str) -> None:
     Reserve switched OFF) -- syncs the tracker and lifts the pause."""
     _cache["ladder_expected_node"] = node
     _cache["manual_override"] = False
+    _persist_ladder_state()
 
 
 def _node_grade(node: str, results: dict) -> str | None:
@@ -210,6 +222,7 @@ async def poll_once() -> None:
             override = True
             _cache["manual_override"] = True
         _cache["ladder_expected_node"] = current
+        _persist_ladder_state()
 
         # DIRECT is never a real leaf in the proxy group's node list, so it can
         # never appear in effectively_alive -- treat it as "alive" here too, or
@@ -238,6 +251,7 @@ async def poll_once() -> None:
                 else:
                     return  # nothing eligible and DIRECT fallback disabled — stay put
             _cache["manual_override"] = False
+            _persist_ladder_state()
 
         if target == current:
             return
@@ -247,6 +261,7 @@ async def poll_once() -> None:
             cfg["proxy_group"], target,
         )
         _cache["ladder_expected_node"] = target
+        _persist_ladder_state()
         _cache["last_switch"] = {
             "from": current, "to": target,
             "reason": reason,
