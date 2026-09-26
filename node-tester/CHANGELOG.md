@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.5
+
+- Add `panel_admin: false` so the ingress sidebar panel is visible to
+  non-admin Home Assistant users too, not just admins.
+
 ## 1.1.4
 
 - Fix: a manually-pinned node in a "select"-type proxy group (never gets
