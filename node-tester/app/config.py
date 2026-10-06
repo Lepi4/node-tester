@@ -13,6 +13,9 @@ DEFAULTS: dict = {
     # group (slot_group). Tests switch/ride THAT group, never the production
     # proxy_group. Both empty/0 = legacy behaviour (tests switch proxy_group).
     "slot_port": 0,
+    # Optional outer fallback group (e.g. SAFE = PROXY -> 4G -> DIRECT) that clients
+    # actually use; only used to show the real traffic path on the dashboard.
+    "safe_group": "",
     "slot_group": "",
     # Mihomo groups (e.g. a Fallback of 4G nodes) shown/switched as ONE node
     "group_nodes": [],

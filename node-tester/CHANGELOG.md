@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1
+
+- Dashboard shows the real traffic path (e.g. `SAFE -> PROXY -> node`) when the
+  new optional "Outer fallback group" setting is filled in. If traffic does not
+  go through the selected proxy group any more (4G / DIRECT), the path is shown
+  in red with "failover active".
+
 ## 1.2.0
 
 - Add "Test slot" (Settings -> Test Settings): a dedicated Mihomo listener

@@ -69,6 +69,12 @@
     </div>
 
     <div class="fg">
+      <label>Outer fallback group (optional)</label>
+      <input type="text" name="safe_group" value="{{ cfg.safe_group or '' }}" placeholder="SAFE">
+      <div class="hint">Fallback group that clients actually use (e.g. SAFE = proxy group &rarr; 4G &rarr; DIRECT). Only used to show the real traffic path and failover state on the dashboard</div>
+    </div>
+
+    <div class="fg">
       <label>Groups as nodes</label>
       <input type="text" name="group_nodes" value="{{ (cfg.group_nodes or [])|join(', ') }}"
              placeholder="VK-4G-Yandex">

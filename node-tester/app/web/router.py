@@ -156,6 +156,7 @@ async def index(request: Request):
     all_nodes: list[str] = []
     alive_set: set[str] = set()
     current_proxy: str | None = None
+    real_path: list[str] = []
     node_results: dict = {}
 
     if config.is_configured():
@@ -178,6 +179,13 @@ async def index(request: Request):
                     )
                 except Exception:
                     current_proxy = None
+                if cfg.get("safe_group"):
+                    try:
+                        real_path = await mihomo.get_path(
+                            cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["safe_group"]
+                        )
+                    except Exception:
+                        real_path = []
                 node_results = store.get_node_results(all_nodes)
                 # Load scoring weights from config
                 wq   = cfg.get("weight_quick",   30)
@@ -256,6 +264,7 @@ async def index(request: Request):
         "disabled_nodes": disabled_nodes,
         "alive_set":      alive_set,
         "current_proxy":  current_proxy,
+        "real_path":      real_path,
         "node_results":   node_results,
         "page":           "dashboard",
     })
@@ -350,6 +359,7 @@ async def settings_save(
     proxy_group:          str = Form(""),
     slot_port:            int = Form(0),
     slot_group:           str = Form(""),
+    safe_group:           str = Form(""),
     group_nodes:          str = Form(""),
     mixed_port:           int = Form(7893),
     proxy_user:           str = Form(""),
@@ -413,6 +423,7 @@ async def settings_save(
         "proxy_group":          proxy_group,
         "slot_port":            max(0, min(65535, slot_port)),
         "slot_group":           slot_group.strip(),
+        "safe_group":           safe_group.strip(),
         "group_nodes":          _gn_list,
         "mixed_port":           mixed_port,
         "proxy_user":           proxy_user,

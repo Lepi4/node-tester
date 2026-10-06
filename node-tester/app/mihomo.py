@@ -218,3 +218,23 @@ async def split_active_nodes(
     )
     # For display: uncertain nodes are shown as active (benefit of the doubt)
     return confirmed_active + uncertain, confirmed_dead
+
+
+async def get_path(host: str, port: int, secret: str, group: str) -> list[str]:
+    """Chain of 'now' selections starting at group, e.g. [SAFE, PROXY, node].
+    Stops at the first non-group proxy (or a loop)."""
+    async with httpx.AsyncClient(timeout=5.0) as c:
+        r = await c.get(f"{_url(host, port)}/proxies", headers=_headers(secret))
+        r.raise_for_status()
+        all_proxies = r.json().get("proxies", {})
+    path = [group]
+    cur = all_proxies.get(group, {}).get("now")
+    for _ in range(8):
+        if not cur or cur in path:
+            break
+        path.append(cur)
+        info = all_proxies.get(cur, {})
+        if info.get("type") not in GROUP_TYPES:
+            break
+        cur = info.get("now")
+    return path

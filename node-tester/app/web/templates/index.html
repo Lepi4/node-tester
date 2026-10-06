@@ -26,6 +26,13 @@
             {% if current_proxy %}
               &nbsp;·&nbsp; using: <strong style="color:#16a34a">{{ current_proxy }}</strong>
             {% endif %}
+            {% if real_path and real_path|length > 1 %}
+              {# real_path = [safe_group, ...]; failover active when it did not go through the selected group #}
+              {% set failover = cfg.proxy_group not in real_path %}
+              <br>traffic path:
+              <strong style="color:{{ '#dc2626' if failover else '#16a34a' }}">{{ real_path|join(' → ') }}</strong>
+              {% if failover %}<span style="color:#dc2626"> — failover active</span>{% endif %}
+            {% endif %}
           {% endif %}
         </div>
       </div>
