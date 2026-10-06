@@ -558,6 +558,30 @@
              value="{{ cfg.monitor_interval_min }}" min="0" max="1440">
       <div class="hint">Default: 5. Set 0 to disable monitoring.</div>
     </div>
+
+    <div class="sep"></div>
+    <p style="font-size:13px;color:var(--m);margin:0 0 14px">
+      <strong>Guard</strong> &mdash; fast dead-node detection. Pings the <em>active</em> node every few
+      seconds; when it stops answering, switches the proxy group to the best-ranked node that does.
+      Needs "Auto-switch dead node" enabled.
+    </p>
+    <div class="row3">
+      <div class="fg">
+        <label>Guard interval (seconds)</label>
+        <input type="number" name="guard_interval_sec" value="{{ cfg.guard_interval_sec if cfg.guard_interval_sec is not none else 10 }}" min="0" max="300">
+        <div class="hint">Default 10. 0 = off</div>
+      </div>
+      <div class="fg">
+        <label>Misses before rescue</label>
+        <input type="number" name="guard_failures" value="{{ cfg.guard_failures or 2 }}" min="1" max="10">
+        <div class="hint">Default 2</div>
+      </div>
+      <div class="fg">
+        <label>Standby groups</label>
+        <input type="text" name="standby_groups" value="{{ (cfg.standby_groups or [])|join(', ') }}" placeholder="STBY1, STBY2">
+        <div class="hint">Select groups kept on the next-best alive nodes (rank 2, 3...) for the outer fallback group</div>
+      </div>
+    </div>
   </div>
 
   {# ── Timezone ── #}

@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.web.router import router
 import app.config as config
-from app.monitor import run_monitor
+from app.monitor import run_monitor, run_guard
 from app.scheduler import run_scheduler
 from app.mqtt import run_publisher
 
@@ -48,6 +48,17 @@ async def _monitor_supervisor() -> None:
             await asyncio.sleep(30)
 
 
+async def _guard_supervisor() -> None:
+    while True:
+        try:
+            await run_guard()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            _log.error("[guard] crashed, restarting in 30s: %s", e)
+            await asyncio.sleep(30)
+
+
 async def _scheduler_supervisor() -> None:
     while True:
         try:
@@ -74,6 +85,7 @@ async def _mqtt_supervisor() -> None:
 async def _lifespan(app: FastAPI):
     tasks = [
         asyncio.create_task(_monitor_supervisor()),
+        asyncio.create_task(_guard_supervisor()),
         asyncio.create_task(_scheduler_supervisor()),
         asyncio.create_task(_mqtt_supervisor()),
     ]

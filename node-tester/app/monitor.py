@@ -82,15 +82,15 @@ def _node_grade(node: str, results: dict) -> str | None:
     return None
 
 
-def _best_node(nodes: list[str], cfg: dict, mode: str) -> str | None:
-    """Return the best MAIN-eligible node from `nodes`, ranked by `mode` (deep/quick/any).
+def _ranked_nodes(nodes: list[str], cfg: dict, mode: str) -> list[str]:
+    """Return the MAIN-eligible nodes from `nodes`, best first, ranked by `mode` (deep/quick/any).
 
     Eligibility: tagged "main" (backup/reserve/excluded never qualify here --
     backup is quarantine-only, reserve has its own selection path via
     _best_reserve_node) AND graded at/above min_grade_for_switch (untested
     nodes with no grade yet are not penalised)."""
     if not nodes:
-        return None
+        return []
     results   = store.get_node_results(nodes)
     groups    = cfg.get("node_groups") or {}
     threshold = cfg.get("min_grade_for_switch", "C")
@@ -103,7 +103,7 @@ def _best_node(nodes: list[str], cfg: dict, mode: str) -> str | None:
 
     candidates = [n for n in nodes if _eligible(n)]
     if not candidates:
-        return None
+        return []
 
     def score(n: str) -> tuple:
         r     = results.get(n, {})
@@ -115,7 +115,13 @@ def _best_node(nodes: list[str], cfg: dict, mode: str) -> str | None:
             return (quick, deep)
         return (max(deep, quick), deep, quick)
 
-    return max(candidates, key=score)
+    return sorted(candidates, key=score, reverse=True)
+
+
+def _best_node(nodes: list[str], cfg: dict, mode: str) -> str | None:
+    """Best MAIN-eligible node from `nodes` (see _ranked_nodes)."""
+    ranked = _ranked_nodes(nodes, cfg, mode)
+    return ranked[0] if ranked else None
 
 
 def _best_reserve_node(nodes: list[str], cfg: dict) -> str | None:
@@ -363,6 +369,7 @@ async def apply_best_node(after_test: str, tested_nodes: list[str] | None = None
                  after_test, current, best, len(candidates))
         import app.mqtt as mqtt
         asyncio.create_task(mqtt.publish_active_node(best))
+        asyncio.create_task(sync_standby(cfg, best))
     except Exception as e:
         log.warning("[monitor] apply_best_node failed: %s", e)
 
@@ -387,6 +394,10 @@ async def run_monitor() -> None:
             ok = True
             try:
                 await asyncio.wait_for(poll_once(), timeout=_POLL_TIMEOUT_SEC)
+                try:
+                    await asyncio.wait_for(sync_standby(), timeout=_POLL_TIMEOUT_SEC)
+                except Exception as e:
+                    log.debug("[standby] sync failed: %s", e)
             except asyncio.TimeoutError:
                 ok = False
                 _cache["error"] = f"poll timed out after {_POLL_TIMEOUT_SEC}s"
@@ -398,3 +409,145 @@ async def run_monitor() -> None:
             await asyncio.sleep(interval * 60 if ok else _FAST_RETRY_SEC)
         else:
             await asyncio.sleep(60)
+
+
+# ── Standby selectors + fast guard ───────────────────────────────────────────
+_STBY_BATCH       = 8   # candidates pinged in parallel
+_STBY_MAX_BATCHES = 3   # give up after this many batches (24 nodes) without a hit
+_guard_fail: dict = {"node": None, "count": 0}
+_rescue_lock = asyncio.Lock()
+
+
+async def _ranked_candidates(cfg: dict, exclude: set[str]) -> list[str]:
+    """Main-tier nodes of the proxy group, best score first, minus `exclude`."""
+    all_nodes = await mihomo.get_nodes_in_group(
+        cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["proxy_group"]
+    )
+    groups = cfg.get("node_groups") or {}
+    nodes = [n for n in all_nodes if groups.get(n, "main") != "excluded" and n not in exclude]
+    return _ranked_nodes(nodes, cfg, "any")
+
+
+async def _pick_alive_ranked(cfg: dict, ranked: list[str], need: int) -> list[str]:
+    """First `need` nodes of `ranked` (rank order kept) that answer an active ping."""
+    picked: list[str] = []
+    limit = _STBY_BATCH * _STBY_MAX_BATCHES
+    for i in range(0, min(len(ranked), limit), _STBY_BATCH):
+        batch = ranked[i:i + _STBY_BATCH]
+        active, _, _ = await mihomo.ping_filter_nodes(
+            cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], batch
+        )
+        alive = set(active)
+        picked += [n for n in batch if n in alive]
+        if len(picked) >= need:
+            break
+    return picked[:need]
+
+
+async def sync_standby(cfg: dict | None = None, current: str | None = None) -> None:
+    """Point each standby select group at the next-best alive node (rank 2, 3, ...).
+    The outer fallback group fails over to these before 4G / DIRECT."""
+    cfg = cfg or config.load()
+    stby = [g for g in (cfg.get("standby_groups") or []) if g]
+    if not stby or not config.is_configured() or not cfg.get("proxy_group"):
+        return
+    host, port, secret = cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"]
+    if current is None:
+        current = await mihomo.get_active_leaf_node(host, port, secret, cfg["proxy_group"])
+    ranked = await _ranked_candidates(cfg, {current} if current else set())
+    alive_cache = set(_cache.get("alive") or [])
+    chosen = [n for n in ranked if n in alive_cache][:len(stby)]
+    if len(chosen) < len(stby):
+        rest = [n for n in ranked if n not in chosen]
+        chosen += await _pick_alive_ranked(cfg, rest, len(stby) - len(chosen))
+    for g, node in zip(stby, chosen):
+        try:
+            if await mihomo.get_selector_now(host, port, secret, g) != node:
+                await mihomo.set_proxy(host, port, secret, g, node)
+                log.info("[standby] %s -> %s", g, node)
+        except Exception as e:
+            log.debug("[standby] %s: %s", g, e)
+
+
+async def _guard_rescue(cfg: dict, current: str) -> None:
+    """Active node is dead: move proxy_group to the best-ranked node that answers."""
+    async with _rescue_lock:
+        ranked = await _ranked_candidates(cfg, {current})
+        picked = await _pick_alive_ranked(cfg, ranked, 1)
+        if not picked:
+            log.warning("[guard] %s is down and no ranked node answers -- leaving it to the fallback group", current)
+            return
+        target = picked[0]
+        await mihomo.set_proxy(
+            cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["proxy_group"], target
+        )
+        _cache["ladder_expected_node"] = target
+        _cache["manual_override"] = False
+        _persist_ladder_state()
+        _cache["last_switch"] = {
+            "from": current, "to": target, "reason": "guard_rescue",
+            "at": datetime.utcnow().isoformat(timespec="seconds"),
+        }
+        _cache["current_node"] = target
+        log.info("[guard] rescue: %s -> %s", current, target)
+        import app.mqtt as mqtt
+        asyncio.create_task(mqtt.publish_active_node(target))
+    try:
+        await sync_standby(cfg, target)
+    except Exception as e:
+        log.debug("[standby] sync after rescue failed: %s", e)
+
+
+async def guard_tick() -> None:
+    cfg = config.load()
+    if not config.is_configured() or not cfg.get("proxy_group"):
+        return
+    if not cfg.get("auto_switch_dead", True):
+        return  # rescue is part of the "switch dead node" feature
+    host, port, secret = cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"]
+    current = await mihomo.get_active_leaf_node(host, port, secret, cfg["proxy_group"])
+    if not current or current == "DIRECT":
+        _guard_fail.update(node=None, count=0)
+        return
+    # Mihomo's own outer fallback already left the proxy group -> it noticed first.
+    left_group = False
+    safe = cfg.get("safe_group")
+    if safe:
+        try:
+            sn = await mihomo.get_selector_now(host, port, secret, safe)
+            left_group = bool(sn) and sn != cfg["proxy_group"]
+        except Exception:
+            pass
+    active, _, _ = await mihomo.ping_filter_nodes(host, port, secret, [current])
+    if active:
+        _guard_fail.update(node=current, count=0)
+        return
+    if _guard_fail["node"] != current:
+        _guard_fail.update(node=current, count=0)
+    _guard_fail["count"] += 1
+    need = max(1, int(cfg.get("guard_failures", 2)))
+    if left_group or _guard_fail["count"] >= need:
+        log.warning("[guard] active node %s is not answering (%d miss%s%s)",
+                    current, _guard_fail["count"], "es" if _guard_fail["count"] != 1 else "",
+                    ", fallback group already switched" if left_group else "")
+        _guard_fail.update(node=None, count=0)
+        await _guard_rescue(cfg, current)
+
+
+async def run_guard() -> None:
+    """Fast loop: detects a dead ACTIVE node within seconds (the slow monitor
+    poll only runs every few minutes)."""
+    await asyncio.sleep(15)
+    while True:
+        cfg = config.load()
+        interval = int(cfg.get("guard_interval_sec", 10))
+        if interval > 0:
+            try:
+                await asyncio.wait_for(guard_tick(), timeout=60)
+            except asyncio.TimeoutError:
+                log.warning("[guard] tick timed out")
+            except Exception as e:
+                log.debug("[guard] tick failed: %s", e)
+            await asyncio.sleep(max(3, interval))
+        else:
+            await asyncio.sleep(30)

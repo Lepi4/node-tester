@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.2
+
+- Add a fast Guard loop (Settings -> Background Monitor): every
+  `guard_interval_sec` (default 10) the ACTIVE node is pinged; after
+  `guard_failures` misses in a row (default 2), or immediately if the outer
+  fallback group already left the proxy group, the proxy group is switched to
+  the best-ranked node that answers an active ping (ranking = the usual score
+  table, main tier, min grade). Runs only with "Auto-switch dead node" on.
+- Add "Standby groups": select groups (e.g. STBY1, STBY2) that are kept pointed
+  at the next-best alive nodes (rank 2, 3...) after each poll / test / rescue,
+  so an outer Mihomo fallback group (PROXY -> STBY1 -> STBY2 -> 4G -> DIRECT)
+  fails over to good nodes before the cellular link.
+
 ## 1.2.1
 
 - Dashboard shows the real traffic path (e.g. `SAFE -> PROXY -> node`) when the

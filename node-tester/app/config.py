@@ -16,6 +16,15 @@ DEFAULTS: dict = {
     # Optional outer fallback group (e.g. SAFE = PROXY -> 4G -> DIRECT) that clients
     # actually use; only used to show the real traffic path on the dashboard.
     "safe_group": "",
+    # Guard: fast dead-node detection for the ACTIVE node (needs auto_switch_dead).
+    # Every guard_interval_sec it pings the active node; guard_failures misses in a
+    # row (or the outer fallback group having left proxy_group) trigger an immediate
+    # rescue to the best-ranked node that answers a ping. 0 = guard off.
+    "guard_interval_sec": 10,
+    "guard_failures": 2,
+    # Select groups kept pointed at the next-best alive nodes (rank 2, 3, ...) so the
+    # outer fallback group has good nodes to fail over to before 4G / DIRECT.
+    "standby_groups": [],
     "slot_group": "",
     # Mihomo groups (e.g. a Fallback of 4G nodes) shown/switched as ONE node
     "group_nodes": [],
