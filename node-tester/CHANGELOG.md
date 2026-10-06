@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.3
+
+- Dashboard shows the node currently held by each standby group (`standby: STBY1 <node> . STBY2 <node>`).
+
 ## 1.2.2
 
 - Add a fast Guard loop (Settings -> Background Monitor): every

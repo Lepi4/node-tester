@@ -26,6 +26,10 @@
             {% if current_proxy %}
               &nbsp;·&nbsp; using: <strong style="color:#16a34a">{{ current_proxy }}</strong>
             {% endif %}
+            {% if standby_view %}
+              <br>standby:
+              {% for g, n in standby_view %}<span style="color:var(--m)">{{ g }}</span> <strong>{{ n }}</strong>{% if not loop.last %} &nbsp;·&nbsp; {% endif %}{% endfor %}
+            {% endif %}
             {% if real_path and real_path|length > 1 %}
               {# real_path = [safe_group, ...]; failover active when it did not go through the selected group #}
               {% set failover = cfg.proxy_group not in real_path %}

@@ -157,6 +157,7 @@ async def index(request: Request):
     alive_set: set[str] = set()
     current_proxy: str | None = None
     real_path: list[str] = []
+    standby_view: list[tuple[str, str]] = []
     node_results: dict = {}
 
     if config.is_configured():
@@ -186,6 +187,14 @@ async def index(request: Request):
                         )
                     except Exception:
                         real_path = []
+                for _sg in (cfg.get("standby_groups") or []):
+                    try:
+                        _sn = await mihomo.get_selector_now(
+                            cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], _sg
+                        )
+                    except Exception:
+                        _sn = None
+                    standby_view.append((_sg, _sn or "?"))
                 node_results = store.get_node_results(all_nodes)
                 # Load scoring weights from config
                 wq   = cfg.get("weight_quick",   30)
@@ -265,6 +274,7 @@ async def index(request: Request):
         "alive_set":      alive_set,
         "current_proxy":  current_proxy,
         "real_path":      real_path,
+        "standby_view":   standby_view,
         "node_results":   node_results,
         "page":           "dashboard",
     })
