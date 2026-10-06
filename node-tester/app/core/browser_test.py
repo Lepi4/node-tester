@@ -11,6 +11,7 @@ Per node, via Mihomo proxy:
 Run twice, take the best result.
 """
 import asyncio
+from app import config
 import logging
 import re
 import time
@@ -58,7 +59,7 @@ _CSS_RE    = re.compile(r'<link[^>]+href=["\']([^"\']+\.css(?:\?[^"\']*)?)["\']'
 
 def _proxy_url(cfg: dict) -> str:
     host = cfg["mihomo_host"].removeprefix("https://").removeprefix("http://").strip("/")
-    return f"http://{host}:{cfg['mixed_port']}"
+    return f"http://{host}:{config.test_port(cfg)}"
 
 
 def _proxy(cfg: dict) -> httpx.Proxy:
@@ -386,7 +387,7 @@ async def test_node(
     """Browser page-load test: BBC + TMDB with images. Runs twice, takes best."""
     host, port, secret, group = (
         cfg["mihomo_host"], cfg["mihomo_port"],
-        cfg["mihomo_secret"], cfg["proxy_group"],
+        cfg["mihomo_secret"], config.test_group(cfg),
     )
 
     async def emit(ev: dict) -> None:

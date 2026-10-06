@@ -55,6 +55,19 @@
       <div class="hint">This Selector group will be switched during Phase 2 (Deep Test)</div>
     </div>
 
+    <div class="row3">
+      <div class="fg">
+        <label>Test slot port</label>
+        <input type="number" name="slot_port" value="{{ cfg.slot_port or 0 }}" min="0" max="65535">
+        <div class="hint">Mihomo listener bound to the slot group below. 0 = off (tests switch the proxy group directly)</div>
+      </div>
+      <div class="fg">
+        <label>Test slot group</label>
+        <input type="text" name="slot_group" value="{{ cfg.slot_group or '' }}" placeholder="NT-SLOT">
+        <div class="hint">Select group (include-all-proxies) the slot listener points to. Tests switch only this group, so client traffic is never touched</div>
+      </div>
+    </div>
+
     <div class="fg">
       <label>Groups as nodes</label>
       <input type="text" name="group_nodes" value="{{ (cfg.group_nodes or [])|join(', ') }}"

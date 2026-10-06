@@ -1,4 +1,5 @@
 import asyncio
+from app import config
 import logging
 import time
 
@@ -17,7 +18,7 @@ BETWEEN_RUNS_S   = 3.0    # pause between the two download attempts
 
 def _proxy_url(cfg: dict) -> str:
     host = cfg["mihomo_host"].removeprefix("https://").removeprefix("http://").strip("/")
-    return f"http://{host}:{cfg['mixed_port']}"
+    return f"http://{host}:{config.test_port(cfg)}"
 
 
 def _proxy(cfg: dict) -> httpx.Proxy:
@@ -66,7 +67,7 @@ async def test_node(node: str, cfg: dict, log_q: asyncio.Queue | None = None) ->
     base_host = cfg["mihomo_host"]
     port      = cfg["mihomo_port"]
     secret    = cfg["mihomo_secret"]
-    group     = cfg["proxy_group"]
+    group     = config.test_group(cfg)
 
     async def emit(ev: dict) -> None:
         if log_q:

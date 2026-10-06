@@ -8,6 +8,7 @@ HTML + dash.js served locally via page.route() — только DASH manifest/se
 идут через Mihomo (это и есть тест). dash.js скачивается один раз при старте.
 """
 import asyncio
+from app import config
 import logging
 import time
 
@@ -113,13 +114,13 @@ def _proxy_url_str(cfg: dict) -> str:
     user = cfg.get("proxy_user", "")
     pw   = cfg.get("proxy_pass", "")
     if user and pw:
-        return f"http://{user}:{pw}@{host}:{cfg['mixed_port']}"
-    return f"http://{host}:{cfg['mixed_port']}"
+        return f"http://{user}:{pw}@{host}:{config.test_port(cfg)}"
+    return f"http://{host}:{config.test_port(cfg)}"
 
 
 def _proxy_cfg(cfg: dict) -> dict:
     host = cfg["mihomo_host"].removeprefix("https://").removeprefix("http://").strip("/")
-    d: dict = {"server": f"http://{host}:{cfg['mixed_port']}"}
+    d: dict = {"server": f"http://{host}:{config.test_port(cfg)}"}
     if cfg.get("proxy_user"):
         d["username"] = cfg["proxy_user"]
         d["password"] = cfg.get("proxy_pass", "")
@@ -532,7 +533,7 @@ async def test_all_nodes(
     Кладёт {"_result": ...} в ev_q для каждой завершённой ноды."""
     host, port, secret, group = (
         cfg["mihomo_host"], cfg["mihomo_port"],
-        cfg["mihomo_secret"], cfg["proxy_group"],
+        cfg["mihomo_secret"], config.test_group(cfg),
     )
 
     async def emit(ev: dict) -> None:
@@ -615,7 +616,7 @@ async def test_node_in_browser(
     Браузер не запускается/закрывается — только переключается прокси."""
     host, port, secret, group = (
         cfg["mihomo_host"], cfg["mihomo_port"],
-        cfg["mihomo_secret"], cfg["proxy_group"],
+        cfg["mihomo_secret"], config.test_group(cfg),
     )
 
     async def emit(ev: dict) -> None:
@@ -647,7 +648,7 @@ async def test_node(node: str, cfg: dict, log_q=None, tg_sources: list[str] | No
     """Тест одной ноды с собственным браузером. Fallback если shared browser недоступен."""
     host, port, secret, group = (
         cfg["mihomo_host"], cfg["mihomo_port"],
-        cfg["mihomo_secret"], cfg["proxy_group"],
+        cfg["mihomo_secret"], config.test_group(cfg),
     )
 
     async def emit(ev: dict) -> None:

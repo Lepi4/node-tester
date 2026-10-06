@@ -9,6 +9,11 @@ DEFAULTS: dict = {
     "mihomo_port": 9090,
     "mihomo_secret": "",
     "proxy_group": "",
+    # Dedicated test slot: a Mihomo listener (slot_port) hard-wired to a select
+    # group (slot_group). Tests switch/ride THAT group, never the production
+    # proxy_group. Both empty/0 = legacy behaviour (tests switch proxy_group).
+    "slot_port": 0,
+    "slot_group": "",
     # Mihomo groups (e.g. a Fallback of 4G nodes) shown/switched as ONE node
     "group_nodes": [],
     "mixed_port": 7893,
@@ -99,3 +104,17 @@ def save(data: dict) -> None:
 
 def is_configured() -> bool:
     return bool(load().get("mihomo_host"))
+
+
+def slot_enabled(cfg: dict) -> bool:
+    return bool(cfg.get("slot_port")) and bool(cfg.get("slot_group"))
+
+
+def test_group(cfg: dict) -> str:
+    """Group whose selection the tests switch (the slot, else the real group)."""
+    return cfg["slot_group"] if slot_enabled(cfg) else cfg["proxy_group"]
+
+
+def test_port(cfg: dict) -> int:
+    """Mihomo inbound port the tests send traffic through."""
+    return int(cfg["slot_port"]) if slot_enabled(cfg) else cfg["mixed_port"]

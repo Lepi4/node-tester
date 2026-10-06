@@ -348,6 +348,8 @@ async def settings_save(
     mihomo_port:          int = Form(9090),
     mihomo_secret:        str = Form(""),
     proxy_group:          str = Form(""),
+    slot_port:            int = Form(0),
+    slot_group:           str = Form(""),
     group_nodes:          str = Form(""),
     mixed_port:           int = Form(7893),
     proxy_user:           str = Form(""),
@@ -409,6 +411,8 @@ async def settings_save(
         "mihomo_port":          mihomo_port,
         "mihomo_secret":        mihomo_secret,
         "proxy_group":          proxy_group,
+        "slot_port":            max(0, min(65535, slot_port)),
+        "slot_group":           slot_group.strip(),
         "group_nodes":          _gn_list,
         "mixed_port":           mixed_port,
         "proxy_user":           proxy_user,
@@ -692,7 +696,7 @@ async def run_speed_stream(request: Request):
             stop_ev = _fresh_stop_event("speed")
             completed = 0
             _original_proxy = await mihomo.get_selector_now(
-                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["proxy_group"]
+                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], config.test_group(cfg)
             )
 
             async def run_one(node: str):
@@ -718,7 +722,7 @@ async def run_speed_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass
@@ -758,7 +762,7 @@ async def run_speed_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass
@@ -834,7 +838,7 @@ async def run_browser_stream(request: Request):
             stop_ev = _fresh_stop_event("browser")
             completed = 0
             _original_proxy = await mihomo.get_selector_now(
-                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["proxy_group"]
+                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], config.test_group(cfg)
             )
 
             async def run_one(node: str):
@@ -863,7 +867,7 @@ async def run_browser_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass
@@ -903,7 +907,7 @@ async def run_browser_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass
@@ -1005,7 +1009,7 @@ async def run_deep_stream(request: Request):
             for n in active:
                 _add_pending_node(n)
             _original_proxy = await mihomo.get_selector_now(
-                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["proxy_group"]
+                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], config.test_group(cfg)
             )
 
             # Общий Chromium для всех видео-тестов — экономит ~2-3с на каждую ноду
@@ -1129,7 +1133,7 @@ async def run_deep_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass
@@ -1221,7 +1225,7 @@ async def run_ws_stream(request: Request):
             stop_ev = _fresh_stop_event("ws")
             completed = 0
             _original_proxy = await mihomo.get_selector_now(
-                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["proxy_group"]
+                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], config.test_group(cfg)
             )
 
             async def run_one(node: str):
@@ -1247,7 +1251,7 @@ async def run_ws_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass
@@ -1287,7 +1291,7 @@ async def run_ws_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass
@@ -1351,7 +1355,7 @@ async def run_dpi_stream(request: Request):
             stop_ev = _fresh_stop_event("dpi")
             completed = 0
             _original_proxy = await mihomo.get_selector_now(
-                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["proxy_group"]
+                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], config.test_group(cfg)
             )
 
             async def run_one(node: str):
@@ -1377,7 +1381,7 @@ async def run_dpi_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass
@@ -1417,7 +1421,7 @@ async def run_dpi_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass
@@ -1492,7 +1496,7 @@ async def run_video_stream(request: Request):
             stop_event = _fresh_stop_event("video")
             completed = 0
             _original_proxy = await mihomo.get_selector_now(
-                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["proxy_group"]
+                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], config.test_group(cfg)
             )
             log.debug("[video] original_proxy=%s", _original_proxy)
 
@@ -1516,7 +1520,7 @@ async def run_video_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                         log.debug("[video] _cleanup: proxy restored OK")
                     except Exception as e:
@@ -1568,7 +1572,7 @@ async def run_video_stream(request: Request):
                     try:
                         await mihomo.set_proxy(
                             cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"],
-                            cfg["proxy_group"], _original_proxy,
+                            config.test_group(cfg), _original_proxy,
                         )
                     except Exception:
                         pass

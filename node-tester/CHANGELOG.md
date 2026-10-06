@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0
+
+- Add "Test slot" (Settings -> Test Settings): a dedicated Mihomo listener
+  (`slot_port`) hard-wired to a select group (`slot_group`, e.g. `NT-SLOT` with
+  `include-all-proxies: true`). Speed / WS / DPI / Browser / Video tests now
+  switch only the slot group and send traffic through the slot port, so the
+  production proxy group is never switched while testing and client traffic
+  is unaffected. Leave the port at 0 to keep the old behaviour.
+  Mihomo side:
+    proxy-groups: [{name: NT-SLOT, type: select, include-all-proxies: true, hidden: true}]
+    listeners:    [{name: nt1, type: mixed, port: 7901, listen: 0.0.0.0, proxy: NT-SLOT}]
+
 ## 1.1.8
 
 - Add "Groups as nodes" setting: name Mihomo groups (e.g. a Fallback of 4G

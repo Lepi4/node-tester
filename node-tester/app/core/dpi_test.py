@@ -4,6 +4,7 @@ Sends HEAD + 64 KB POST to each host from the hyperion-cs suite through the prox
 A timeout on POST means DPI froze the connection (or the proxy can't pass large data).
 """
 import asyncio
+from app import config
 import logging
 import os
 import time
@@ -62,7 +63,7 @@ CONCURRENCY   = 18          # parallel host checks
 
 def _proxy_url(cfg: dict) -> str:
     host = cfg["mihomo_host"].removeprefix("https://").removeprefix("http://").strip("/")
-    return f"http://{host}:{cfg['mixed_port']}"
+    return f"http://{host}:{config.test_port(cfg)}"
 
 
 def _make_proxy(cfg: dict) -> httpx.Proxy:
@@ -138,7 +139,7 @@ async def test_node(node: str, cfg: dict, log_q: asyncio.Queue | None = None) ->
     base_host = cfg["mihomo_host"]
     port      = cfg["mihomo_port"]
     secret    = cfg["mihomo_secret"]
-    group     = cfg["proxy_group"]
+    group     = config.test_group(cfg)
     proxy     = _make_proxy(cfg)
 
     async def emit(ev: dict) -> None:

@@ -1,4 +1,5 @@
 import asyncio
+from app import config
 import base64
 import logging
 import os
@@ -24,7 +25,7 @@ BETWEEN_RUNS_S   = 3.0
 
 def _proxy_parts(cfg: dict) -> tuple[str, int, str, str]:
     host = cfg["mihomo_host"].removeprefix("https://").removeprefix("http://").strip("/")
-    return host, cfg["mixed_port"], cfg.get("proxy_user", ""), cfg.get("proxy_pass", "")
+    return host, config.test_port(cfg), cfg.get("proxy_user", ""), cfg.get("proxy_pass", "")
 
 
 # ─── Frame codec ─────────────────────────────────────────────────────────────
@@ -236,7 +237,7 @@ async def test_node(node: str, cfg: dict, log_q=None) -> dict:
     proxy_host, proxy_port, proxy_user, proxy_pass = _proxy_parts(cfg)
     host, port, secret, group = (
         cfg["mihomo_host"], cfg["mihomo_port"],
-        cfg["mihomo_secret"], cfg["proxy_group"],
+        cfg["mihomo_secret"], config.test_group(cfg),
     )
 
     async def emit(ev: dict):
