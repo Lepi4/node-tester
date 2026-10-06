@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.5
+
+- Guard is faster: the interval now counts from the START of each tick (a slow
+  probe of a dead node no longer stretches the cycle from 10 s to ~18 s), and
+  guard probes / rescue candidate pings use a shorter 2.5 s per-URL timeout
+  (dead node detected in ~3.5 s instead of ~8 s).
+- After a rescue the outer fallback group is force-checked
+  (`/group/<safe_group>/delay`) so it returns to the proxy group immediately
+  instead of waiting for its next scheduled health check.
+
 ## 1.2.4
 
 - Guard: after a rescue, force Mihomo to re-test the proxy group immediately so the outer fallback group returns to it at once (instead of lingering on a standby node until its next scheduled check).

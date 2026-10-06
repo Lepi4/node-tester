@@ -100,11 +100,14 @@ async def classify_nodes(
 
 
 async def ping_filter_nodes(
-    host: str, port: int, secret: str, nodes: list[str]
+    host: str, port: int, secret: str, nodes: list[str], timeout_ms: int | None = None
 ) -> tuple[list[str], list[str], dict[str, str]]:
-    """Ping-based check for uncertain nodes: try 2 URLs, active if either responds."""
+    """Ping-based check for uncertain nodes: try 2 URLs, active if either responds.
+    `timeout_ms` overrides the per-URL timeout (the guard uses a short one)."""
     if not nodes:
         return [], [], {}
+    t_ms = timeout_ms or _PING_TIMEOUT_MS
+    http_timeout = t_ms / 1000 + 3.0 if timeout_ms else _PING_HTTP_TIMEOUT
 
     base = _url(host, port)
     hdrs = _headers(secret)
@@ -118,7 +121,7 @@ async def ping_filter_nodes(
                 try:
                     r = await client.get(
                         endpoint, headers=hdrs,
-                        params={"timeout": _PING_TIMEOUT_MS, "url": url},
+                        params={"timeout": t_ms, "url": url},
                     )
                     if r.status_code == 200:
                         delay = r.json().get("delay", 0)
@@ -133,7 +136,7 @@ async def ping_filter_nodes(
                     errors.append(f"{url} → {e}")
             return node, False, "; ".join(errors)
 
-    async with httpx.AsyncClient(timeout=_PING_HTTP_TIMEOUT) as c:
+    async with httpx.AsyncClient(timeout=http_timeout) as c:
         results = await asyncio.gather(*[ping_one(n, c) for n in nodes])
 
     active  = [n for n, ok, _ in results if ok]
@@ -238,3 +241,14 @@ async def get_path(host: str, port: int, secret: str, group: str) -> list[str]:
             break
         cur = info.get("now")
     return path
+
+
+async def force_group_check(host: str, port: int, secret: str, group: str,
+                            url: str = "https://www.gstatic.com/generate_204",
+                            timeout_ms: int = 5000) -> None:
+    """Make Mihomo health-check every member of a group right now (updates the
+    alive flags a fallback group chooses from)."""
+    async with httpx.AsyncClient(timeout=timeout_ms / 1000 + 5.0) as c:
+        r = await c.get(f"{_url(host, port)}/group/{quote(group, safe='')}/delay",
+                        headers=_headers(secret), params={"url": url, "timeout": timeout_ms})
+        r.raise_for_status()

@@ -414,6 +414,7 @@ async def run_monitor() -> None:
 # ── Standby selectors + fast guard ───────────────────────────────────────────
 _STBY_BATCH       = 8   # candidates pinged in parallel
 _STBY_MAX_BATCHES = 3   # give up after this many batches (24 nodes) without a hit
+_GUARD_PING_MS = 2500  # per-URL timeout for guard probes / candidate pings
 _guard_fail: dict = {"node": None, "count": 0}
 _rescue_lock = asyncio.Lock()
 
@@ -435,7 +436,8 @@ async def _pick_alive_ranked(cfg: dict, ranked: list[str], need: int) -> list[st
     for i in range(0, min(len(ranked), limit), _STBY_BATCH):
         batch = ranked[i:i + _STBY_BATCH]
         active, _, _ = await mihomo.ping_filter_nodes(
-            cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], batch
+            cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], batch,
+            timeout_ms=_GUARD_PING_MS,
         )
         alive = set(active)
         picked += [n for n in batch if n in alive]
@@ -499,6 +501,11 @@ async def _guard_rescue(cfg: dict, current: str) -> None:
             await mihomo.ping_filter_nodes(
                 cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], [cfg["proxy_group"]]
             )
+            if cfg.get("safe_group"):
+                # ...and re-check the outer fallback group so it returns to the proxy group now
+                await mihomo.force_group_check(
+                    cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], cfg["safe_group"]
+                )
         except Exception as e:
             log.debug("[guard] forced group check failed: %s", e)
     try:
@@ -527,7 +534,7 @@ async def guard_tick() -> None:
             left_group = bool(sn) and sn != cfg["proxy_group"]
         except Exception:
             pass
-    active, _, _ = await mihomo.ping_filter_nodes(host, port, secret, [current])
+    active, _, _ = await mihomo.ping_filter_nodes(host, port, secret, [current], timeout_ms=_GUARD_PING_MS)
     if active:
         _guard_fail.update(node=current, count=0)
         return
@@ -551,12 +558,15 @@ async def run_guard() -> None:
         cfg = config.load()
         interval = int(cfg.get("guard_interval_sec", 10))
         if interval > 0:
+            t0 = asyncio.get_running_loop().time()
             try:
                 await asyncio.wait_for(guard_tick(), timeout=60)
             except asyncio.TimeoutError:
                 log.warning("[guard] tick timed out")
             except Exception as e:
                 log.debug("[guard] tick failed: %s", e)
-            await asyncio.sleep(max(3, interval))
+            # fixed rate: the interval counts from the START of the tick, so a slow
+            # probe of a dead node does not stretch the cycle
+            await asyncio.sleep(max(1.0, max(3, interval) - (asyncio.get_running_loop().time() - t0)))
         else:
             await asyncio.sleep(30)
