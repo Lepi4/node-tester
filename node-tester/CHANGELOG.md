@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.4
+
+- Guard: after a rescue, force Mihomo to re-test the proxy group immediately so the outer fallback group returns to it at once (instead of lingering on a standby node until its next scheduled check).
+
 ## 1.2.3
 
 - Dashboard shows the node currently held by each standby group (`standby: STBY1 <node> . STBY2 <node>`).

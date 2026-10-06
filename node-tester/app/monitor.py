@@ -492,6 +492,15 @@ async def _guard_rescue(cfg: dict, current: str) -> None:
         log.info("[guard] rescue: %s -> %s", current, target)
         import app.mqtt as mqtt
         asyncio.create_task(mqtt.publish_active_node(target))
+        # Force Mihomo to re-test the proxy group right away: otherwise its stale
+        # "dead" flag keeps the outer fallback group on a standby node until its next
+        # scheduled health check (and the standby shift below would move traffic again).
+        try:
+            await mihomo.ping_filter_nodes(
+                cfg["mihomo_host"], cfg["mihomo_port"], cfg["mihomo_secret"], [cfg["proxy_group"]]
+            )
+        except Exception as e:
+            log.debug("[guard] forced group check failed: %s", e)
     try:
         await sync_standby(cfg, target)
     except Exception as e:
