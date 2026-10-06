@@ -55,6 +55,13 @@
       <div class="hint">This Selector group will be switched during Phase 2 (Deep Test)</div>
     </div>
 
+    <div class="fg">
+      <label>Groups as nodes</label>
+      <input type="text" name="group_nodes" value="{{ (cfg.group_nodes or [])|join(', ') }}"
+             placeholder="VK-4G-Yandex">
+      <div class="hint">Comma-separated Mihomo groups (e.g. a Fallback of 4G nodes) that are members of the proxy group above. Each is listed, tested and switched as ONE node; Mihomo picks the working member itself.</div>
+    </div>
+
     <div class="fg" id="group-section-extra" {% if not cfg.proxy_group %}class="hidden"{% endif %}>
     </div>
 

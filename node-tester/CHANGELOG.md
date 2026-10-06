@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.8
+
+- Add "Groups as nodes" setting: name Mihomo groups (e.g. a Fallback of 4G
+  nodes nested inside the main Selector) that should be treated as ONE node.
+  Previously every nested group was dropped from the node list, so such
+  groups -- and the nodes inside them -- were invisible and could not be
+  tagged "reserve". A group-node is listed, health-checked and switched like a
+  normal node (new ones default to the "reserve" tier); Mihomo itself picks the
+  working member. The active-node resolver stops at a declared group-node
+  instead of descending into it.
+
 ## 1.1.7
 
 - Fix: even with no manual pin active, every addon/HA restart made the poll

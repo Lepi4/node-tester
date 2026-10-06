@@ -12,6 +12,16 @@ _PING_HTTP_TIMEOUT = 7.0
 _PING_SEMAPHORE   = 8
 
 
+def _group_nodes() -> set[str]:
+    """Groups the user wants treated as a single selectable node (e.g. a
+    Fallback of 4G proxies sitting inside the main Selector)."""
+    try:
+        from app import config
+        return {g for g in (config.load().get("group_nodes") or []) if g}
+    except Exception:
+        return set()
+
+
 def _url(host: str, port: int) -> str:
     host = host.removeprefix("https://").removeprefix("http://").strip("/")
     return f"http://{host}:{port}"
@@ -45,10 +55,11 @@ async def get_nodes_in_group(host: str, port: int, secret: str, group: str) -> l
         rp.raise_for_status()
         all_proxies = rp.json().get("proxies", {})
 
+    group_nodes = _group_nodes()
     return [
         n for n in data.get("all", [])
         if n not in BUILT_IN
-        and all_proxies.get(n, {}).get("type") not in GROUP_TYPES
+        and (n in group_nodes or all_proxies.get(n, {}).get("type") not in GROUP_TYPES)
     ]
 
 
@@ -157,10 +168,13 @@ async def get_active_leaf_node(host: str, port: int, secret: str, group: str) ->
         r.raise_for_status()
         all_proxies = r.json().get("proxies", {})
 
+    group_nodes = _group_nodes()
     current = all_proxies.get(group, {}).get("now")
     for _ in range(8):
         if not current:
             return None
+        if current in group_nodes:
+            return current          # user-declared "group as a node" -- stop here
         info = all_proxies.get(current, {})
         if info.get("type") not in GROUP_TYPES:
             return current          # real proxy node

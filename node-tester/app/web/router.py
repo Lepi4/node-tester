@@ -1,4 +1,5 @@
 import asyncio
+import re
 import json
 import logging
 from pathlib import Path
@@ -347,6 +348,7 @@ async def settings_save(
     mihomo_port:          int = Form(9090),
     mihomo_secret:        str = Form(""),
     proxy_group:          str = Form(""),
+    group_nodes:          str = Form(""),
     mixed_port:           int = Form(7893),
     proxy_user:           str = Form(""),
     proxy_pass:           str = Form(""),
@@ -398,11 +400,16 @@ async def settings_save(
     mode = auto_node_mode if auto_node_mode in ("off", "deep", "quick", "any") else "off"
     def _sched_mode(v): return v if v in ("interval", "daily", "weekly") else "interval"
     def _sched_days(lst): return sorted({int(d) for d in lst if d.isdigit() and 0 <= int(d) <= 6})
+    _gn_list = [g.strip() for g in re.split(r"[,\n]", group_nodes) if g.strip()]
+    _ng = dict(zip(ng_node, ng_group))
+    for _g in _gn_list:
+        _ng.setdefault(_g, "reserve")  # new group-node defaults to this tier
     config.save({
         "mihomo_host":          mihomo_host.strip(),
         "mihomo_port":          mihomo_port,
         "mihomo_secret":        mihomo_secret,
         "proxy_group":          proxy_group,
+        "group_nodes":          _gn_list,
         "mixed_port":           mixed_port,
         "proxy_user":           proxy_user,
         "proxy_pass":           proxy_pass,
@@ -430,7 +437,7 @@ async def settings_save(
         "tg_video_channels":         [ch.strip().lstrip("@") for ch in tg_video_channels],
         "tg_image_channels":         [ch.strip().lstrip("@") for ch in tg_image_channels],
         "node_groups":               {n: (g if g in ("main", "backup", "reserve", "excluded") else "main")
-                                         for n, g in zip(ng_node, ng_group)},
+                                         for n, g in _ng.items()},
         "min_grade_for_switch":      min_grade_for_switch if min_grade_for_switch in ("S", "A", "B", "C", "D", "F") else "C",
         "schedule_quick_enabled":    schedule_quick_enabled == "on",
         "schedule_quick_mode":       _sched_mode(schedule_quick_mode),

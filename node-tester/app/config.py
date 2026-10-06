@@ -9,6 +9,8 @@ DEFAULTS: dict = {
     "mihomo_port": 9090,
     "mihomo_secret": "",
     "proxy_group": "",
+    # Mihomo groups (e.g. a Fallback of 4G nodes) shown/switched as ONE node
+    "group_nodes": [],
     "mixed_port": 7893,
     "proxy_user": "",
     "proxy_pass": "",
